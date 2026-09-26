@@ -7,7 +7,13 @@ export const FONT_STYLES = {
   blood: { color: PAL.blood3, shadow: PAL.ink },
   ember: { color: PAL.ember2, shadow: PAL.ink },
   dim: { color: PAL.stone3, shadow: PAL.ink },
+  faded: { color: PAL.stone2, shadow: PAL.bone0 },
+  rare: { color: PAL.steel1, shadow: PAL.bone0 },
+  legend: { color: PAL.ember0, shadow: PAL.bone0 },
+  unique: { color: PAL.blood2, shadow: PAL.bone0 },
 };
+
+export const RARITY_STYLE = { comun: 'box', raro: 'rare', legendario: 'legend', unico: 'unique' };
 
 // Genera una fuente bitmap por estilo: el glifo lleva sombra abajo/derecha horneada.
 export function registerFonts(scene) {

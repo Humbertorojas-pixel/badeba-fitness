@@ -17,7 +17,7 @@ export class Menu {
     this.container.add(drawBox(scene.add.graphics(), x, y, w, h));
     this.positions = items.map((_, i) => ({ x: x + padX + (i % cols) * colW, y: y + padY + Math.floor(i / cols) * rowH }));
     this.labels = items.map((it, i) => {
-      const t = pixelText(scene, this.positions[i].x, this.positions[i].y, it.label, it.disabled ? 'dim' : 'box');
+      const t = pixelText(scene, this.positions[i].x, this.positions[i].y, it.label, it.disabled ? 'faded' : it.style || 'box');
       this.container.add(t);
       return t;
     });
@@ -32,7 +32,7 @@ export class Menu {
   setItemLabel(i, label, disabled = false) {
     this.items[i].label = label;
     this.items[i].disabled = disabled;
-    this.labels[i].setFont(disabled ? 'font_dim' : 'font_box').setText(label);
+    this.labels[i].setFont(disabled ? 'font_faded' : `font_${this.items[i].style || 'box'}`).setText(label);
   }
 
   open(startIndex = this.index) {
@@ -46,6 +46,11 @@ export class Menu {
   close() {
     this.container.setVisible(false);
     this.active = false;
+  }
+
+  destroy() {
+    this.scene.events.off('update', this._tick);
+    this.container.destroy();
   }
 
   _place() {

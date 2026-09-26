@@ -29,7 +29,7 @@ describe('combate', () => {
   it('una pelea siempre termina', () => {
     for (let seed = 0; seed < 200; seed++) {
       const rng = createRng(seed);
-      const state = { player: hero(), enemy: createCombatant(tpl(7)), inventory: { tonico: 3 } };
+      const state = { player: hero(), enemy: createCombatant(tpl(7)), consumables: { tonico: 3 } };
       let outcome = 'continue';
       let turns = 0;
       while (outcome === 'continue' && turns < 100) {
@@ -41,10 +41,10 @@ describe('combate', () => {
   });
 
   it('usar un tónico cura y consume el ítem', () => {
-    const state = { player: hero(), enemy: createCombatant(tpl(9)), inventory: { tonico: 1 } };
+    const state = { player: hero(), enemy: createCombatant(tpl(9)), consumables: { tonico: 1 } };
     state.player.hp = 5;
     const { events } = resolveTurn(state, { type: 'item', item: 'tonico' }, createRng(3));
-    expect(state.inventory.tonico).toBe(0);
+    expect(state.consumables.tonico).toBe(0);
     expect(events.some((e) => e.type === 'heal')).toBe(true);
   });
 

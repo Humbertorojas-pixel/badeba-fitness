@@ -5,12 +5,13 @@ const KEYMAP = {
   ArrowDown: 'down', s: 'down', S: 'down',
   ArrowLeft: 'left', a: 'left', A: 'left',
   ArrowRight: 'right', d: 'right', D: 'right',
-  z: 'confirm', Z: 'confirm', Enter: 'confirm', ' ': 'confirm',
+  z: 'confirm', Z: 'confirm', Enter: ['confirm', 'start'], ' ': 'confirm',
   x: 'cancel', X: 'cancel', Escape: 'cancel', Backspace: 'cancel',
 };
+const actionsOf = (key) => [].concat(KEYMAP[key] || []);
 const DIRS = ['up', 'down', 'left', 'right'];
 
-// Controles estilo GBA: Z/Enter/Espacio = A, X/Esc/Retroceso = B, M = silenciar.
+// Controles estilo GBA: Z/Espacio = A, X/Esc/Retroceso = B, Enter = START (y A), M = silenciar.
 // Las pulsaciones se toman de eventos nativos (no se pierden toques rápidos) y se
 // descartan al final de cada frame, para que nada se "acumule" durante animaciones.
 export function createControls(scene) {
@@ -25,19 +26,21 @@ export function createControls(scene) {
       if (!e.repeat) audio.toggleMute();
       return;
     }
-    const action = KEYMAP[e.key];
-    if (!action) return;
+    const actions = actionsOf(e.key);
+    if (!actions.length) return;
     held.add(e.key);
-    if (!e.repeat) pressed.add(action);
-    if (DIRS.includes(action) && !stack.includes(action)) stack.push(action);
+    for (const action of actions) {
+      if (!e.repeat) pressed.add(action);
+      if (DIRS.includes(action) && !stack.includes(action)) stack.push(action);
+    }
   };
   const onUp = (e) => {
-    const action = KEYMAP[e.key];
-    if (!action) return;
     held.delete(e.key);
-    const stillHeld = [...held].some((k) => KEYMAP[k] === action);
-    const i = stack.indexOf(action);
-    if (i >= 0 && !stillHeld) stack.splice(i, 1);
+    for (const action of actionsOf(e.key)) {
+      const stillHeld = [...held].some((k) => actionsOf(k).includes(action));
+      const i = stack.indexOf(action);
+      if (i >= 0 && !stillHeld) stack.splice(i, 1);
+    }
   };
   const clearFrame = () => pressed.clear();
   const blur = () => {
@@ -67,7 +70,8 @@ export function createControls(scene) {
     dir: () => stack[stack.length - 1] || null,
     confirm: () => take('confirm'),
     cancel: () => take('cancel'),
-    confirmHeld: () => [...held].some((k) => KEYMAP[k] === 'confirm'),
+    start: () => take('start'),
+    confirmHeld: () => [...held].some((k) => actionsOf(k).includes('confirm')),
     justDir: () => DIRS.find((d) => take(d)) || null,
   };
 }

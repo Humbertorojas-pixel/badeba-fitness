@@ -1,13 +1,13 @@
-import { createCombatant } from './battle.js';
-
-export const PLAYER_BASE = { name: 'Errante', maxHp: 40, str: 10, def: 6, spd: 8, moves: ['tajo', 'embestida', 'guardia'] };
+import { newPlayer } from './character.js';
+import { newPity } from './loot.js';
 
 export function newRun(seed = Date.now() >>> 0) {
   return {
     seed,
     floor: 1,
-    player: createCombatant(PLAYER_BASE),
-    inventory: { tonico: 3 },
+    player: newPlayer(),
+    bag: { consumables: { tonico: 3, pocion: 0, incienso: 0 }, gear: [] },
+    pity: newPity(),
     defeated: [],
     introShown: false,
   };

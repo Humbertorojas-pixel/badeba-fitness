@@ -11,20 +11,25 @@ import { PAL, hexToInt } from '../palette.js';
 import { audio } from '../audio/audio.js';
 import { getRun } from '../core/state.js';
 import { createRng } from '../core/rng.js';
-import { createCombatant, resolveTurn, ITEMS } from '../core/battle.js';
+import { createCombatant, createEnemyCombatant, resolveTurn } from '../core/battle.js';
+import { derive, gainXp, xpReward } from '../core/character.js';
+import { itemDisplayName } from '../core/loot.js';
 import { MOVES } from '../data/moves.js';
+import { CONSUMABLES, RARITY_LABEL } from '../data/items.js';
 
 const ENEMY_BASE = { x: 176, y: 70 };
 const PLAYER_BASE = { x: 64, y: 112 };
 
 // Panel de PS con barra verde/amarilla/roja animada, como en Pokémon GBA.
 class HpPanel {
-  constructor(scene, { x, y, w, h, name, showNumbers }) {
+  constructor(scene, { x, y, w, h, name, level, showNumbers }) {
     this.scene = scene;
     this.showNumbers = showNumbers;
     this.c = scene.add.container(x, y).setDepth(DEPTH.ui);
     this.c.add(drawBox(scene.add.graphics(), 0, 0, w, h));
+    const lv = `Nv${level}`;
     this.c.add(pixelText(scene, 9, 6, name, 'box'));
+    this.c.add(pixelText(scene, w - 10 - measure(lv), 6, lv, 'box'));
     this.c.add(pixelText(scene, 9, 18, 'PS', 'blood'));
     this.bar = scene.add.graphics();
     this.c.add(this.bar);
@@ -79,8 +84,8 @@ export class Battle extends Phaser.Scene {
     this.controls = createControls(this);
     this.rng = createRng((this.run.seed ^ (this.run.floor * 7919) ^ this.time.now) >>> 0);
     const { template } = this;
-    this.enemy = createCombatant(template);
-    this.player = this.run.player;
+    this.enemy = createEnemyCombatant(template);
+    this.player = this.buildPlayerCombatant();
 
     this.add.image(0, 0, 'battle_bg').setOrigin(0, 0);
     const tex = ensureMonsterTextures(this, String(template.seed), template);
@@ -93,8 +98,8 @@ export class Battle extends Phaser.Scene {
     this.playerSprite = this.add.image(PLAYER_BASE.x, PLAYER_BASE.y + 4, 'player_back').setOrigin(0.5, 1);
     this.playerGroup.add(this.playerSprite);
 
-    this.enemyPanel = new HpPanel(this, { x: 6, y: 8, w: 104, h: 32, name: this.enemy.name });
-    this.playerPanel = new HpPanel(this, { x: 128, y: 70, w: 108, h: 40, name: this.player.name, showNumbers: true });
+    this.enemyPanel = new HpPanel(this, { x: 4, y: 8, w: 120, h: 32, name: this.enemy.name, level: template.level });
+    this.playerPanel = new HpPanel(this, { x: 128, y: 70, w: 108, h: 40, name: this.player.name, level: this.run.player.level, showNumbers: true });
     this.enemyPanel.set(this.enemy.hp, this.enemy.maxHp);
     this.playerPanel.set(this.player.hp, this.player.maxHp);
     this.enemyPanel.c.setVisible(false);
@@ -118,6 +123,28 @@ export class Battle extends Phaser.Scene {
     audio.playMusic('combate');
     this.cameras.main.fadeIn(200);
     this.flow();
+  }
+
+  buildPlayerCombatant() {
+    const p = this.run.player;
+    const d = derive(p);
+    return createCombatant({ name: p.name, maxHp: d.maxHp, str: d.str, def: d.def, spd: d.spd, moves: p.moves }, { hp: p.hp, accBonus: d.accBonus, effects: d.effects });
+  }
+
+  // Recalcula stats tras un drenaje o restauración de maná; anuncia ítems (des)sincronizados.
+  async applyDerived() {
+    const before = derive({ ...this.run.player, manaDrain: this.lastDrain ?? 0 }).desynced;
+    this.lastDrain = this.run.player.manaDrain;
+    const d = derive(this.run.player);
+    Object.assign(this.player, { str: d.str, def: d.def, spd: d.spd, accBonus: d.accBonus, effects: d.effects, maxHp: d.maxHp });
+    this.player.hp = Math.min(this.player.hp, d.maxHp);
+    this.playerPanel.set(this.player.hp, this.player.maxHp);
+    for (const slot of d.desynced.filter((s) => !before.includes(s))) {
+      await this.say(`¡${this.run.player.equipment[slot].name} se desincroniza!`);
+    }
+    for (const slot of before.filter((s) => !d.desynced.includes(s))) {
+      await this.say(`${this.run.player.equipment[slot].name} vuelve a sincronizarse.`);
+    }
   }
 
   describeMove(id) {
@@ -144,6 +171,13 @@ export class Battle extends Phaser.Scene {
     audio.sfx('miss');
     this.enemyPanel.c.setVisible(true);
     await this.say(`¡${this.template.article} ${this.enemy.name} surge de la penumbra!`);
+    const loot = this.template.loot;
+    if (loot?.kind === 'equip' && loot.rarity !== 'comun') {
+      if (loot.rarity !== 'raro') audio.sfx('encounter');
+      await this.say(`¡Empuña ${loot.name}! (${RARITY_LABEL[loot.rarity]})`);
+      if (loot.rarity === 'legendario') await this.say('Un arma de las que solo existen en los mitos de los muertos.');
+      if (loot.rarity === 'unico') await this.say('El aire se dobla a su alrededor. Ese objeto no obedece las leyes de este mundo.');
+    }
     this.playerPanel.c.setVisible(true);
   }
 
@@ -167,14 +201,15 @@ export class Battle extends Phaser.Scene {
           return { type: 'move', move: this.player.moves[i] };
         }
       } else if (choice === 1) {
-        const count = this.run.inventory.tonico || 0;
+        const stock = this.run.bag.consumables;
+        const keys = Object.keys(CONSUMABLES);
         const bag = new Menu(this, this.controls, {
-          x: 96, y: 64, w: 144, h: 48, rowH: 16, padY: 9,
-          items: [{ label: `${ITEMS.tonico.name} x${count}`, disabled: count <= 0 }, { label: 'Cerrar' }],
+          x: 96, y: 40, w: 144, h: 16 + (keys.length + 1) * 16, rowH: 16, padY: 9,
+          items: [...keys.map((k) => ({ label: `${CONSUMABLES[k].name} x${stock[k] || 0}`, disabled: !stock[k] })), { label: 'Cerrar' }],
         });
         const i = await bag.open();
-        bag.close();
-        if (i === 0) return { type: 'item', item: 'tonico' };
+        bag.destroy();
+        if (i >= 0 && i < keys.length) return { type: 'item', item: keys[i] };
       } else if (choice === 2) {
         await this.say(`${this.enemy.name} solo responde con un gruñido gutural.`);
       } else if (choice === 3) {
@@ -188,7 +223,7 @@ export class Battle extends Phaser.Scene {
     let outcome = 'continue';
     while (outcome === 'continue') {
       const action = await this.chooseAction();
-      const result = resolveTurn({ player: this.player, enemy: this.enemy, inventory: this.run.inventory }, action, this.rng);
+      const result = resolveTurn({ player: this.player, enemy: this.enemy, consumables: this.run.bag.consumables }, action, this.rng);
       await this.play(result.events);
       outcome = result.outcome;
     }
@@ -263,6 +298,17 @@ export class Battle extends Phaser.Scene {
           if (ev.side === 'enemy') await this.sink(this.enemySprite, ENEMY_BASE.y);
           else await this.sink(this.playerSprite, PLAYER_BASE.y + 4);
           break;
+        case 'drain':
+          audio.sfx('flee');
+          this.run.player.manaDrain += ev.amount;
+          await this.say(`¡Tu maná se drena! (-${ev.amount})`);
+          await this.applyDerived();
+          break;
+        case 'restoreMana':
+          this.run.player.manaDrain = 0;
+          audio.sfx('heal');
+          await this.applyDerived();
+          break;
         case 'enemyFled':
           audio.sfx('flee');
           await new Promise((r) => this.tweens.add({ targets: this.enemySprite, x: GAME_W + 60, duration: 400, onComplete: r }));
@@ -273,12 +319,36 @@ export class Battle extends Phaser.Scene {
     }
   }
 
+  async rewards() {
+    const run = this.run;
+    const xp = xpReward(this.template);
+    await this.say(`Ganas ${xp} puntos de experiencia.`);
+    const levels = gainXp(run.player, xp);
+    for (let i = levels - 1; i >= 0; i--) {
+      audio.sfx('heal');
+      await this.say(`¡${run.player.name} sube al nivel ${run.player.level - i}! (+3 puntos de atributo)`);
+    }
+    if (levels) await this.say('Asigna tus puntos en ESTADO (Enter).');
+    const loot = this.template.loot;
+    if (!loot) return;
+    if (loot.kind === 'consumable') run.bag.consumables[loot.key] = (run.bag.consumables[loot.key] || 0) + 1;
+    else run.bag.gear.push(loot);
+    if (loot.kind === 'equip' && loot.rarity !== 'comun' && loot.rarity !== 'raro') audio.sfx('encounter');
+    const tag = loot.kind === 'equip' ? ` (${RARITY_LABEL[loot.rarity]})` : '';
+    await this.say(`${this.enemy.name} deja caer ${itemDisplayName(loot)}${tag}.`);
+  }
+
   async finish(outcome) {
     const run = this.run;
+    if (outcome !== 'lose') {
+      run.player.hp = this.player.hp;
+      run.player.manaDrain = 0;
+    }
     if (outcome === 'win') {
       audio.playMusic('victoria');
       run.defeated.push(this.enemyId);
       await this.say(`Has sobrevivido a ${this.template.article.toLowerCase()} ${this.enemy.name}.`);
+      await this.rewards();
     } else if (outcome === 'enemyFled') {
       run.defeated.push(this.enemyId);
     } else if (outcome === 'fled') {

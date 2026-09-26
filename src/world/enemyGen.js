@@ -11,7 +11,7 @@ const ARCH = {
   },
   wraith: {
     nouns: [['Sombra', 'f'], ['Lamento', 'm'], ['Espectro', 'm'], ['Plañidera', 'f'], ['Eco', 'm']],
-    base: { maxHp: 24, str: 9, def: 4, spd: 10 }, moves: ['lamento', 'garra'],
+    base: { maxHp: 24, str: 9, def: 4, spd: 10 }, moves: ['lamento', 'garra', 'succion'],
   },
   crawler: {
     nouns: [['Reptante', 'm'], ['Tejedor', 'm'], ['Roedor', 'm'], ['Larva', 'f'], ['Araña', 'f']],

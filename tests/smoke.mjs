@@ -102,6 +102,36 @@ try {
   await wait(1200);
   await shot('07-fin-combate');
 
+  // Menú de pausa → ESTADO (con puntos) → MOCHILA (con un legendario y un raro inyectados).
+  if ((await scenes()).includes('Overworld')) {
+    await page.evaluate(() => {
+      const run = window.__game.registry.get('run');
+      run.player.points = 3;
+      run.bag.gear.push(
+        { id: 'l1', kind: 'equip', slot: 'arma', rarity: 'legendario', name: 'Mandoble del Rey Sin Trono', mods: { atk: 9, spd: -2 }, sync: 9 },
+        { id: 'r1', kind: 'equip', slot: 'armadura', rarity: 'raro', name: 'Cota férrea', mods: { def: 5 }, sync: 4 },
+      );
+    });
+    await press('Enter', 1, 500);
+    await shot('10-pausa');
+    await press('ArrowDown', 1, 200);
+    await press('z', 1, 800);
+    await press('z', 2, 250);
+    await shot('11-estado');
+    await press('x', 1, 600);
+    await press('Enter', 1, 500);
+    await press('ArrowUp', 1, 200);
+    await press('z', 1, 800);
+    await press('ArrowRight', 1, 300);
+    await shot('12-mochila-equipo');
+    await press('ArrowDown', 1, 200);
+    await press('z', 1, 400);
+    await press('z', 1, 900);
+    await shot('13-equipar');
+    await press('z', 1, 400);
+    await press('x', 1, 600);
+  }
+
   // Descenso: coloca al jugador junto a la escalera, la pisa y confirma "Sí".
   if ((await scenes()).includes('Overworld')) {
     const dir = await page.evaluate(() => {

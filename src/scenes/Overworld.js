@@ -14,6 +14,9 @@ import { computeTiles, isBlocked } from '../world/floor.js';
 import { generateFloor } from '../world/generate.js';
 import { BIOMES } from '../world/biomes.js';
 import { buildTileset } from '../gfx/tiles.js';
+import { createRng, hashSeed } from '../core/rng.js';
+import { rollEnemyLoot } from '../core/loot.js';
+import { derive } from '../core/character.js';
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const SIGHT = 3;
@@ -87,12 +90,45 @@ export class Overworld extends Phaser.Scene {
     if (!this.run.introShown) {
       this.run.introShown = true;
       this.dialog('Despiertas sobre piedra húmeda. El aire huele a hierro y a cera quemada.');
+    } else if (this.run.pendingMessage) {
+      const msg = this.run.pendingMessage;
+      this.run.pendingMessage = null;
+      this.dialog(msg);
     }
+    const onResume = () => { this.busy = false; };
+    this.events.on('resume', onResume);
+    this.events.once('shutdown', () => this.events.off('resume', onResume));
   }
 
   buildFloorData() {
-    this.run.floorData = generateFloor({ runSeed: this.run.seed, depth: this.run.floor });
+    const floor = generateFloor({ runSeed: this.run.seed, depth: this.run.floor });
+    // Los enemigos cargan botín con las mismas reglas que el jugador (y con el mismo pity).
+    const rng = createRng(hashSeed(floor.seed, 'loot'));
+    const intelligence = derive(this.run.player).int;
+    for (const e of floor.enemies) e.template.loot = rollEnemyLoot(rng, this.run.pity, this.run.floor, intelligence);
+    this.run.floorData = floor;
     this.run.pos = null;
+  }
+
+  async openPauseMenu() {
+    this.busy = true;
+    this.player.anims.stop();
+    this.player.setFrame(DIR_FRAME_BASE[this.facing]);
+    audio.sfx('confirm');
+    const points = this.run.player.points;
+    const menu = new Menu(this, this.controls, {
+      x: 158, y: 4, w: 78, h: 76, rowH: 16, padY: 10,
+      items: [{ label: 'MOCHILA' }, { label: points ? 'ESTADO +' : 'ESTADO', style: points ? 'unique' : 'box' }, { label: 'GUARDAR', disabled: true }, { label: 'CERRAR' }],
+    });
+    const choice = await menu.open(this.pauseIndex || 0);
+    menu.destroy();
+    this.pauseIndex = Math.max(0, choice);
+    if (choice === 0 || choice === 1) {
+      this.scene.launch(choice === 0 ? 'Bag' : 'Status');
+      this.scene.pause();
+      return;
+    }
+    this.busy = false;
   }
 
   inFragment() {
@@ -139,6 +175,12 @@ export class Overworld extends Phaser.Scene {
   update(_time, delta) {
     if (this.busy || this.moving) return;
     if (this.turnLock > 0) this.turnLock -= delta;
+
+    if (this.controls.start()) {
+      this.controls.confirm();
+      this.openPauseMenu();
+      return;
+    }
 
     if (this.controls.confirm()) {
       this.interact();
@@ -284,7 +326,7 @@ export class Overworld extends Phaser.Scene {
     await this.textbox.say('Una escalera se hunde en la oscuridad. No hay vuelta atrás. ¿Descender?', { hold: true });
     const menu = new Menu(this, this.controls, { x: GAME_W - 64, y: 64, w: 60, h: 46, items: [{ label: 'Sí' }, { label: 'No' }] });
     const choice = await menu.open(1);
-    menu.close();
+    menu.destroy();
     this.textbox.hide();
     if (choice !== 0) {
       this.busy = false;
@@ -295,6 +337,11 @@ export class Overworld extends Phaser.Scene {
     this.cameras.main.once('camerafadeoutcomplete', () => {
       // No se puede volver: el piso anterior se descarta (sus texturas se liberan al crear el nuevo).
       this.run.purgeTextures = true;
+      const p = this.run.player;
+      const max = derive(p).maxHp;
+      const heal = Math.min(max - p.hp, Math.ceil(max * 0.25));
+      p.hp += heal;
+      this.run.pendingMessage = heal > 0 ? `Recuperas el aliento al descender. (+${heal} PS)` : null;
       this.run.floor += 1;
       this.run.defeated = [];
       this.run.floorData = null;
