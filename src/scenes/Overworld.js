@@ -10,9 +10,10 @@ import { ensureMonsterTextures } from '../gfx/monsterTextures.js';
 import { DIR_FRAME_BASE } from '../gfx/playerSprites.js';
 import { audio } from '../audio/audio.js';
 import { getRun } from '../core/state.js';
-import { ENEMIES } from '../data/enemies.js';
-import { parseAscii, computeTiles, isBlocked } from '../world/floor.js';
-import { FIXED_FLOOR, ENEMY_KEYS, INSPECT_TEXT } from '../world/fixedFloor.js';
+import { computeTiles, isBlocked } from '../world/floor.js';
+import { generateFloor } from '../world/generate.js';
+import { BIOMES } from '../world/biomes.js';
+import { buildTileset } from '../gfx/tiles.js';
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const SIGHT = 3;
@@ -25,12 +26,22 @@ export class Overworld extends Phaser.Scene {
   create() {
     this.run = getRun(this);
     this.controls = createControls(this);
+    if (this.run.purgeTextures) {
+      this.run.purgeTextures = false;
+      for (const key of this.textures.getTextureKeys()) {
+        if (key.startsWith('mon_') || key.startsWith('tiles_f')) this.textures.remove(key);
+      }
+    }
     if (!this.run.floorData) this.buildFloorData();
     const floor = this.run.floorData;
     this.floor = floor;
 
+    const tilesKey = `tiles_f${this.run.floor}`;
+    if (!this.textures.exists(tilesKey)) {
+      buildTileset(this, BIOMES[floor.biome].tiles, floor.fragment ? BIOMES[floor.fragment.biome].tiles : null, tilesKey);
+    }
     const map = this.make.tilemap({ data: computeTiles(floor), tileWidth: TILE, tileHeight: TILE });
-    const tileset = map.addTilesetImage('tiles', 'tiles', TILE, TILE, 0, 0);
+    const tileset = map.addTilesetImage(tilesKey, tilesKey, TILE, TILE, 0, 0);
     map.createLayer(0, tileset, 0, 0).setDepth(DEPTH.floor);
 
     for (const t of floor.torches) {
@@ -41,7 +52,7 @@ export class Overworld extends Phaser.Scene {
     this.enemies = floor.enemies
       .filter((e) => !this.run.defeated.includes(e.id))
       .map((e) => {
-        const tex = ensureMonsterTextures(this, e.key, ENEMIES[e.key]);
+        const tex = ensureMonsterTextures(this, String(e.template.seed), e.template);
         const shadow = this.add.image(e.x * TILE + 8, e.y * TILE + 15, 'shadow').setDepth(DEPTH.entity - 1);
         const sprite = this.add.image(e.x * TILE + 8, e.y * TILE + 15, tex.small).setOrigin(0.5, 1);
         sprite.setDepth(DEPTH.entity + e.y);
@@ -67,7 +78,7 @@ export class Overworld extends Phaser.Scene {
     this.turnLock = 0;
     this.lastBump = 0;
 
-    audio.playMusic('catacumbas');
+    audio.playMusic(this.musicHere());
     cam.fadeIn(350);
     if (this.run.locationShown !== this.run.floor) {
       this.run.locationShown = this.run.floor;
@@ -80,9 +91,17 @@ export class Overworld extends Phaser.Scene {
   }
 
   buildFloorData() {
-    this.run.floorData = parseAscii(FIXED_FLOOR, { enemyKeys: ENEMY_KEYS, inspectText: INSPECT_TEXT });
-    this.run.floorData.biome = 'Catacumbas';
+    this.run.floorData = generateFloor({ runSeed: this.run.seed, depth: this.run.floor });
     this.run.pos = null;
+  }
+
+  inFragment() {
+    const frag = this.floor.fragment;
+    return !!frag && frag.cells.has(this.tile.y * this.floor.w + this.tile.x);
+  }
+
+  musicHere() {
+    return this.inFragment() ? BIOMES[this.floor.fragment.biome].music : this.floor.music;
   }
 
   placePlayer() {
@@ -91,7 +110,7 @@ export class Overworld extends Phaser.Scene {
   }
 
   showLocation() {
-    const label = `Piso ${this.run.floor} · ${this.floor.biome}`;
+    const label = `Piso ${this.run.floor} · ${this.floor.biomeName}`;
     const w = measure(label) + 20;
     const c = this.add.container(4, -26).setScrollFactor(0).setDepth(DEPTH.ui);
     c.add(drawBox(this.add.graphics(), 0, 0, w, 24));
@@ -193,6 +212,13 @@ export class Overworld extends Phaser.Scene {
   }
 
   afterStep() {
+    audio.playMusic(this.musicHere());
+    if (this.inFragment() && this.run.fragmentSeen !== this.run.floor) {
+      this.run.fragmentSeen = this.run.floor;
+      this.cameras.main.shake(300, 0.004);
+      this.dialog('La realidad se pliega. Este lugar no pertenece a este piso.');
+      return;
+    }
     const { stairs } = this.floor;
     if (stairs && this.tile.x === stairs.x && this.tile.y === stairs.y) {
       this.askDescend();
@@ -255,7 +281,7 @@ export class Overworld extends Phaser.Scene {
 
   async askDescend() {
     this.busy = true;
-    await this.textbox.say('Una escalera se hunde en la oscuridad. No hay vuelta atrás. ¿Descender?');
+    await this.textbox.say('Una escalera se hunde en la oscuridad. No hay vuelta atrás. ¿Descender?', { hold: true });
     const menu = new Menu(this, this.controls, { x: GAME_W - 64, y: 64, w: 60, h: 46, items: [{ label: 'Sí' }, { label: 'No' }] });
     const choice = await menu.open(1);
     menu.close();
@@ -267,6 +293,8 @@ export class Overworld extends Phaser.Scene {
     audio.sfx('stairs');
     this.cameras.main.fadeOut(600, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => {
+      // No se puede volver: el piso anterior se descarta (sus texturas se liberan al crear el nuevo).
+      this.run.purgeTextures = true;
       this.run.floor += 1;
       this.run.defeated = [];
       this.run.floorData = null;
@@ -288,7 +316,7 @@ export class Overworld extends Phaser.Scene {
     this.time.delayedCall(180, () => cam.flash(120, 20, 18, 26));
     this.time.delayedCall(380, () => {
       cam.fadeOut(260, 0, 0, 0);
-      cam.once('camerafadeoutcomplete', () => this.scene.start('Battle', { enemyId: enemy.id, key: enemy.key }));
+      cam.once('camerafadeoutcomplete', () => this.scene.start('Battle', { enemyId: enemy.id, template: enemy.template }));
     });
   }
 }

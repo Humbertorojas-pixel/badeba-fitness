@@ -12,7 +12,6 @@ import { audio } from '../audio/audio.js';
 import { getRun } from '../core/state.js';
 import { createRng } from '../core/rng.js';
 import { createCombatant, resolveTurn, ITEMS } from '../core/battle.js';
-import { ENEMIES } from '../data/enemies.js';
 import { MOVES } from '../data/moves.js';
 
 const ENEMY_BASE = { x: 176, y: 70 };
@@ -72,20 +71,19 @@ export class Battle extends Phaser.Scene {
 
   init(data) {
     this.enemyId = data.enemyId;
-    this.enemyKey = data.key;
+    this.template = data.template;
   }
 
   create() {
     this.run = getRun(this);
     this.controls = createControls(this);
     this.rng = createRng((this.run.seed ^ (this.run.floor * 7919) ^ this.time.now) >>> 0);
-    const template = ENEMIES[this.enemyKey];
-    this.template = template;
+    const { template } = this;
     this.enemy = createCombatant(template);
     this.player = this.run.player;
 
     this.add.image(0, 0, 'battle_bg').setOrigin(0, 0);
-    const tex = ensureMonsterTextures(this, this.enemyKey, template);
+    const tex = ensureMonsterTextures(this, String(template.seed), template);
     this.enemyGroup = this.add.container(0, 0);
     this.enemyGroup.add(this.add.image(ENEMY_BASE.x, ENEMY_BASE.y - 4, 'platform_enemy'));
     this.enemySprite = this.add.image(ENEMY_BASE.x, ENEMY_BASE.y, tex.big).setOrigin(0.5, 1);

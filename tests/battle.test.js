@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { createRng } from '../src/core/rng.js';
 import { createCombatant, resolveTurn, computeDamage, fleeChance } from '../src/core/battle.js';
-import { ENEMIES } from '../src/data/enemies.js';
+import { generateEnemyTemplate } from '../src/world/enemyGen.js';
+import { BIOMES } from '../src/world/biomes.js';
+
+const tpl = (seed) => generateEnemyTemplate({ seed, depth: 1, biome: BIOMES.catacumbas });
 import { MOVES } from '../src/data/moves.js';
 
 const hero = () => createCombatant({ name: 'Tú', maxHp: 40, str: 10, def: 6, spd: 8, moves: ['tajo', 'embestida', 'guardia'] });
@@ -15,10 +18,10 @@ describe('combate', () => {
   it('el daño mínimo es 1 y la guardia lo reduce', () => {
     const rng = createRng(1);
     const p = hero();
-    const e = createCombatant(ENEMIES.penitente);
-    const normal = computeDamage(e, p, MOVES.azote, createRng(5)).amount;
+    const e = createCombatant(tpl(3));
+    const normal = computeDamage(e, p, MOVES.garra, createRng(5)).amount;
     p.guarding = true;
-    const guarded = computeDamage(e, p, MOVES.azote, createRng(5)).amount;
+    const guarded = computeDamage(e, p, MOVES.garra, createRng(5)).amount;
     expect(guarded).toBeLessThan(normal);
     expect(computeDamage({ str: 1 }, { def: 999 }, MOVES.garra, rng).amount).toBe(1);
   });
@@ -26,7 +29,7 @@ describe('combate', () => {
   it('una pelea siempre termina', () => {
     for (let seed = 0; seed < 200; seed++) {
       const rng = createRng(seed);
-      const state = { player: hero(), enemy: createCombatant(ENEMIES.sombra), inventory: { tonico: 3 } };
+      const state = { player: hero(), enemy: createCombatant(tpl(7)), inventory: { tonico: 3 } };
       let outcome = 'continue';
       let turns = 0;
       while (outcome === 'continue' && turns < 100) {
@@ -38,7 +41,7 @@ describe('combate', () => {
   });
 
   it('usar un tónico cura y consume el ítem', () => {
-    const state = { player: hero(), enemy: createCombatant(ENEMIES.reptante), inventory: { tonico: 1 } };
+    const state = { player: hero(), enemy: createCombatant(tpl(9)), inventory: { tonico: 1 } };
     state.player.hp = 5;
     const { events } = resolveTurn(state, { type: 'item', item: 'tonico' }, createRng(3));
     expect(state.inventory.tonico).toBe(0);

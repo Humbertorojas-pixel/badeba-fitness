@@ -24,7 +24,42 @@ const wait = (ms) => page.waitForTimeout(ms);
 const shot = (name) => page.screenshot({ path: path.join(outDir, `${name}.png`) });
 const scenes = () => page.evaluate(() => window.__game.scene.getScenes(true).map((s) => s.scene.key));
 const press = async (key, n = 1, gap = 120) => { for (let i = 0; i < n; i++) { await page.keyboard.press(key); await wait(gap); } };
-const hold = async (key, ms) => { await page.keyboard.down(key); await wait(ms); await page.keyboard.up(key); };
+
+// Camino BFS (en la página) desde el jugador hasta una casilla vecina al enemigo más cercano.
+const pathToEnemy = () => page.evaluate(() => {
+  const s = window.__game.scene.getScene('Overworld');
+  const f = s.floor;
+  const blocked = (x, y) => x < 0 || y < 0 || x >= f.w || y >= f.h || f.walls[y * f.w + x] === 1 || f.blockers.has(y * f.w + x);
+  const dirs = { right: [1, 0], left: [-1, 0], down: [0, 1], up: [0, -1] };
+  const targets = new Set(s.enemies.map((e) => `${e.x},${e.y}`));
+  const start = `${s.tile.x},${s.tile.y}`;
+  const prev = new Map([[start, null]]);
+  const q = [[s.tile.x, s.tile.y]];
+  while (q.length) {
+    const [x, y] = q.shift();
+    for (const [d, [dx, dy]] of Object.entries(dirs)) {
+      const k = `${x + dx},${y + dy}`;
+      if (prev.has(k)) continue;
+      if (targets.has(k)) {
+        const steps = [d];
+        for (let c = `${x},${y}`; prev.get(c); c = prev.get(c)[0]) steps.unshift(prev.get(c)[1]);
+        return steps;
+      }
+      if (blocked(x + dx, y + dy)) continue;
+      prev.set(k, [`${x},${y}`, d]);
+      q.push([x + dx, y + dy]);
+    }
+  }
+  return [];
+});
+
+const step = (dir) => page.evaluate((d) => {
+  const s = window.__game.scene.getScene('Overworld');
+  if (s.busy || s.moving) return false;
+  s.facing = d;
+  s.tryMove(d);
+  return true;
+}, dir);
 
 try {
   await page.goto('http://localhost:5174/');
@@ -34,11 +69,19 @@ try {
   await wait(1200);
   await shot('02-mundo-intro');
   await press('z', 4, 400);
-  await wait(500);
+  await wait(2500);
   await shot('03-mundo');
 
-  // Recorre el cuarto inicial hacia el enemigo del cuarto este (lo detecta y ataca).
-  await hold('ArrowRight', 2600);
+  const route = await pathToEnemy();
+  if (!route.length) throw new Error('No hay camino a ningún enemigo');
+  for (const dir of route) {
+    if ((await scenes()).includes('Battle')) break;
+    while (!(await step(dir))) {
+      await wait(100);
+      if ((await scenes()).includes('Battle')) break;
+    }
+    await wait(260);
+  }
   await wait(2500);
   const s1 = await scenes();
   await shot('04-tras-caminar');
@@ -51,13 +94,41 @@ try {
   await wait(400);
   await shot('06-menu-movimientos');
   await press('z');
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 60; i++) {
     await press('z', 1, 350);
     const s = await scenes();
     if (s.includes('Overworld') || s.includes('Title')) break;
   }
   await wait(1200);
   await shot('07-fin-combate');
+
+  // Descenso: coloca al jugador junto a la escalera, la pisa y confirma "Sí".
+  if ((await scenes()).includes('Overworld')) {
+    const dir = await page.evaluate(() => {
+      const s = window.__game.scene.getScene('Overworld');
+      const { stairs, w, walls, blockers } = s.floor;
+      for (const [d, dx, dy] of [['up', 0, 1], ['down', 0, -1], ['left', 1, 0], ['right', -1, 0]]) {
+        const x = stairs.x + dx;
+        const y = stairs.y + dy;
+        if (!walls[y * w + x] && !blockers.has(y * w + x) && !s.enemyAt(x, y)) {
+          s.tile = { x, y };
+          s.placePlayer();
+          return d;
+        }
+      }
+      return null;
+    });
+    await step(dir);
+    await wait(1600);
+    await press('z', 1, 900);
+    await press('ArrowUp', 1, 300);
+    await shot('08-descender');
+    await press('z');
+    await wait(2500);
+    const floorNum = await page.evaluate(() => window.__game.registry.get('run').floor);
+    await shot('09-piso-2');
+    if (floorNum !== 2) throw new Error(`Se esperaba piso 2, piso actual: ${floorNum}`);
+  }
   console.log('Escenas finales:', await scenes());
 } catch (e) {
   errors.push(`test: ${e.message}`);

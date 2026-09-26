@@ -18,6 +18,30 @@ export const TRACKS = {
       { wave: 'noise', vol: 0.05, notes: bars('h . . . . . . . . . . . . . . .', '. . . . . . . . . . h . . . . .', '. . . . . . h . . . . . . . . .', '. . . . . . . . . . . . . . h .') },
     ],
   },
+  caverna: {
+    bpm: 58,
+    channels: [
+      { wave: 'triangle', vol: 0.5, notes: bars('D2 - - - - - - - - - - - - - - -', 'D2 - - - - - - - Eb2 - - - - - - -', 'D2 - - - - - - - - - - - - - - -', 'C2 - - - - - - - Eb2 - - - . . . .') },
+      { wave: 'sine', vol: 0.16, echo: { delay: 4, vol: 0.35, transpose: 0 }, notes: bars('. . . . A4 - . . . . . . . . . .', '. . . . . . . . Bb4 - - . . . . .', '. . D5 - . . . . . . . . . . . .', '. . . . . . . . A4 - - - G4 - - -') },
+      { wave: 'noise', vol: 0.06, notes: bars('. . . h . . . . . . . . . . . .', '. . . . . . . . . . . . . h . .', '. h . . . . . . . . . . . . . .', '. . . . . . . h . . . . . . . .') },
+    ],
+  },
+  ruinas: {
+    bpm: 76,
+    channels: [
+      { wave: 'triangle', vol: 0.5, notes: bars('E2 - - - - - - - B2 - - - - - - -', 'C3 - - - - - - - G2 - - - - - - -', 'A2 - - - - - - - E2 - - - - - - -', 'F2 - - - - - - - B1 - - - - - - -') },
+      { wave: 'pulse25', vol: 0.12, echo: { delay: 2, vol: 0.35, transpose: 0 }, notes: bars('B4 - - - . . G4 - - - . . E4 - - -', 'E5 - - - - - D5 - C5 - - - B4 - - -', 'C5 - - - . . A4 - - - . . E4 - - -', 'F4 - - - G4 - - - A4 - - - D#4 - - -') },
+      { wave: 'noise', vol: 0.05, notes: bars('h . . . . . . . h . . . . . . .', 'h . . . . . . . h . . . . . . .', 'h . . . . . . . h . . . . . . .', 'h . . . . . . . h . . . h . . .') },
+    ],
+  },
+  eco: {
+    bpm: 50,
+    channels: [
+      { wave: 'triangle', vol: 0.45, notes: bars('C2 - - - - - - - F#2 - - - - - - -', 'C2 - - - - - - - G2 - - - - - - -') },
+      { wave: 'pulse12', vol: 0.1, echo: { delay: 3, vol: 0.5, transpose: -1 }, notes: bars('C5 - - . . . F#5 - - . . . . . . .', 'B4 - - . . . F5 - - . . . E5 - - -') },
+      { wave: 'sine', vol: 0.12, notes: bars('. . . . . . . . . . . . C6 - - -', '. . . . . . . . Db6 - - - . . . .') },
+    ],
+  },
   combate: {
     bpm: 150,
     channels: [

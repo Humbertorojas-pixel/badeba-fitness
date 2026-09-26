@@ -13,29 +13,30 @@ export const T = {
   STAIRS: 7,
   RUBBLE: 8,
   FLOOR_MOSS: 9,
+  FLOOR_ROOTS: 10,
+  FLOOR_DEBRIS: 11,
 };
 
-export const SOLID = new Set([T.VOID, T.WALL_TOP, T.WALL_FACE, T.RUBBLE]);
-
-// Paleta por bioma: la misma construcción de tiles con distinta paleta.
-export const BIOME_TILE_PALETTES = {
-  catacumbas: {
-    floor: [PAL.stone0, PAL.stone1, PAL.stone2], wall: [PAL.night, PAL.shade, PAL.dusk, PAL.stone0], brick: [PAL.shade, PAL.stone0, PAL.stone1, PAL.stone2],
-  },
-};
+// Los tiles de un fragmento multiversal usan el mismo índice + FRAGMENT_OFFSET.
+export const FRAGMENT_OFFSET = 16;
 
 function floorBase(pal, seed) {
   const rng = createRng(seed);
-  const b = new PixelBuffer(16, 16).rect(0, 0, 16, 16, pal.floor[1]);
-  for (const [ox, oy] of [[0, 0], [8, 0], [0, 8], [8, 8]]) {
-    const sx = ox + ((oy / 8) % 2) * 0;
-    b.rect(sx, oy + 7, 8, 1, pal.floor[0]).rect(sx + 7, oy, 1, 8, pal.floor[0]);
-    b.rect(sx, oy, 7, 1, pal.floor[2]).rect(sx, oy, 1, 7, pal.floor[2]);
-  }
-  for (let i = 0; i < 6; i++) {
-    const x = rng.int(1, 14);
-    const y = rng.int(1, 14);
-    b.set(x, y, rng.chance(0.5) ? pal.floor[0] : pal.floor[2]);
+  const [dark, mid, light] = pal.floor;
+  const b = new PixelBuffer(16, 16).rect(0, 0, 16, 16, mid);
+  if (pal.floorStyle === 'slab') {
+    for (const [ox, oy] of [[0, 0], [8, 0], [0, 8], [8, 8]]) {
+      b.rect(ox, oy + 7, 8, 1, dark).rect(ox + 7, oy, 1, 8, dark);
+      b.rect(ox, oy, 7, 1, light).rect(ox, oy, 1, 7, light);
+    }
+    for (let i = 0; i < 6; i++) b.set(rng.int(1, 14), rng.int(1, 14), rng.chance(0.5) ? dark : light);
+  } else {
+    for (let i = 0; i < 5; i++) {
+      const x = rng.int(1, 13);
+      const y = rng.int(1, 13);
+      b.ellipse(x + 1, y + 1, rng.int(1, 2), 1, light).set(x + 1, y + 2, dark).set(x + 2, y + 2, dark);
+    }
+    for (let i = 0; i < 16; i++) b.set(rng.int(0, 15), rng.int(0, 15), rng.chance(0.6) ? dark : light);
   }
   return b;
 }
@@ -61,14 +62,33 @@ function blood(b, rng) {
   for (let i = 0; i < 5; i++) b.set(rng.int(2, 13), rng.int(3, 14), PAL.blood0);
 }
 
-function moss(b, rng, pal) {
+function moss(b, rng) {
   for (let i = 0; i < 18; i++) {
     const x = rng.int(0, 15);
     const y = rng.int(0, 15);
     b.set(x, y, rng.chance(0.6) ? PAL.moss1 : PAL.moss0);
     if (rng.chance(0.3)) b.set(x + 1, y, PAL.moss2);
   }
-  return pal;
+}
+
+function roots(b, rng) {
+  let x = rng.int(0, 3);
+  let y = rng.int(4, 11);
+  while (x < 16) {
+    b.set(x, y, PAL.rust0).set(x, y - 1, PAL.rust1);
+    if (rng.chance(0.25)) b.line(x, y, x + 2, y + rng.int(-3, 3), PAL.rust0);
+    x += 1;
+    y = Math.max(2, Math.min(14, y + rng.int(-1, 1)));
+  }
+}
+
+function debris(b, rng, pal) {
+  for (let i = 0; i < 6; i++) {
+    const x = rng.int(2, 13);
+    const y = rng.int(2, 13);
+    b.rect(x, y, rng.int(1, 2), rng.int(1, 2), pal.face[2]).set(x, y, pal.face[3]);
+    b.set(x + 1, y + 2, PAL.ink);
+  }
 }
 
 function wallTop(pal, seed) {
@@ -86,18 +106,28 @@ function wallTop(pal, seed) {
 
 function wallFace(pal, seed) {
   const rng = createRng(seed);
-  const b = new PixelBuffer(16, 16).rect(0, 0, 16, 16, pal.brick[0]);
-  for (let row = 0; row < 4; row++) {
-    const y = row * 4;
-    const off = row % 2 === 0 ? 0 : 4;
-    for (let x = -8 + off; x < 16; x += 8) {
-      const shade = rng.chance(0.25) ? pal.brick[2] : pal.brick[1];
-      b.rect(x + 1, y + 1, 7, 3, shade);
-      b.rect(x + 1, y + 1, 7, 1, pal.brick[3]);
-      if (rng.chance(0.3)) b.set(x + rng.int(2, 6), y + 2, pal.brick[0]);
+  const [mortar, base, alt, hi] = pal.face;
+  const b = new PixelBuffer(16, 16).rect(0, 0, 16, 16, mortar);
+  if (pal.faceStyle === 'brick') {
+    for (let row = 0; row < 4; row++) {
+      const y = row * 4;
+      const off = row % 2 === 0 ? 0 : 4;
+      for (let x = -8 + off; x < 16; x += 8) {
+        b.rect(x + 1, y + 1, 7, 3, rng.chance(0.25) ? alt : base);
+        b.rect(x + 1, y + 1, 7, 1, hi);
+        if (rng.chance(0.3)) b.set(x + rng.int(2, 6), y + 2, mortar);
+      }
     }
+  } else {
+    b.rect(0, 0, 16, 16, base);
+    for (let x = 0; x < 16; x += rng.int(2, 4)) {
+      const top = rng.int(0, 4);
+      b.line(x, top, x + rng.int(-1, 1), 13, mortar);
+      b.set(x + 1, top + 1, hi);
+    }
+    for (let i = 0; i < 8; i++) b.set(rng.int(0, 15), rng.int(2, 12), rng.chance(0.5) ? alt : hi);
   }
-  b.rect(0, 0, 16, 1, PAL.stone3).rect(0, 14, 16, 2, PAL.ink).rect(0, 13, 16, 1, pal.brick[0]);
+  b.rect(0, 0, 16, 1, hi).rect(0, 14, 16, 2, PAL.ink).rect(0, 13, 16, 1, mortar);
   return b;
 }
 
@@ -116,35 +146,40 @@ function rubble(pal, seed) {
   for (let i = 0; i < 4; i++) {
     const x = rng.int(4, 11);
     const y = rng.int(6, 11);
-    rocks.ellipse(x, y, rng.int(3, 4), rng.int(2, 3), pal.brick[1]);
-    rocks.ellipse(x - 1, y - 1, 1.5, 1, pal.brick[3]);
+    rocks.ellipse(x, y, rng.int(3, 4), rng.int(2, 3), pal.face[1]);
+    rocks.ellipse(x - 1, y - 1, 1.5, 1, pal.face[3]);
   }
   rocks.outline(PAL.ink);
   return b.paste(rocks, 0, 0);
 }
 
-export function buildTileset(scene, biome = 'catacumbas', key = 'tiles') {
-  const pal = BIOME_TILE_PALETTES[biome];
-  const seed = 7331;
+export function biomeFrames(pal, seed = 7331) {
   const frames = [];
+  const decorated = (s, fn) => {
+    const f = floorBase(pal, seed + s);
+    fn(f, createRng(seed + s + 100));
+    return f;
+  };
   frames[T.VOID] = new PixelBuffer(16, 16).rect(0, 0, 16, 16, PAL.ink);
   frames[T.FLOOR] = floorBase(pal, seed);
-  const cracked = floorBase(pal, seed + 1);
-  crack(cracked, createRng(seed + 2), pal.floor[0]);
-  frames[T.FLOOR_CRACK] = cracked;
-  const withBones = floorBase(pal, seed + 3);
-  bones(withBones, createRng(seed + 4));
-  frames[T.FLOOR_BONES] = withBones;
-  const bloody = floorBase(pal, seed + 5);
-  blood(bloody, createRng(seed + 6));
-  frames[T.FLOOR_BLOOD] = bloody;
+  frames[T.FLOOR_CRACK] = decorated(1, (f, r) => crack(f, r, pal.floor[0]));
+  frames[T.FLOOR_BONES] = decorated(3, bones);
+  frames[T.FLOOR_BLOOD] = decorated(5, blood);
   frames[T.WALL_TOP] = wallTop(pal, seed + 7);
   frames[T.WALL_FACE] = wallFace(pal, seed + 8);
   frames[T.STAIRS] = stairs();
   frames[T.RUBBLE] = rubble(pal, seed + 9);
-  const mossy = floorBase(pal, seed + 10);
-  moss(mossy, createRng(seed + 11), pal);
-  frames[T.FLOOR_MOSS] = mossy;
+  frames[T.FLOOR_MOSS] = decorated(10, moss);
+  frames[T.FLOOR_ROOTS] = decorated(12, roots);
+  frames[T.FLOOR_DEBRIS] = decorated(14, (f, r) => debris(f, r, pal));
+  while (frames.length < FRAGMENT_OFFSET) frames.push(new PixelBuffer(16, 16));
+  return frames;
+}
+
+// Tileset del piso: bioma base en 0..15 y (opcional) bioma del fragmento en 16..31.
+export function buildTileset(scene, basePal, fragmentPal = null, key = 'tiles') {
+  const frames = biomeFrames(basePal);
+  if (fragmentPal) frames.push(...biomeFrames(fragmentPal, 9119));
   addStrip(scene, key, frames);
   return key;
 }

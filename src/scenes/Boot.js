@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
 import { registerFonts } from '../gfx/font.js';
-import { buildTileset } from '../gfx/tiles.js';
 import { buildMisc } from '../gfx/misc.js';
 import { buildPlayerOverworld, buildPlayerBack } from '../gfx/playerSprites.js';
 import { addStrip } from '../gfx/pixelBuffer.js';
@@ -13,7 +12,6 @@ export class Boot extends Phaser.Scene {
 
   create() {
     registerFonts(this);
-    buildTileset(this);
     buildMisc(this);
     addStrip(this, 'player', buildPlayerOverworld());
     addStrip(this, 'player_back', [buildPlayerBack()]);

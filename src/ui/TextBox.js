@@ -27,13 +27,14 @@ export class TextBox {
     return this.rect.w - 26;
   }
 
-  say(text, { auto = 0 } = {}) {
+  // hold: resuelve en cuanto la última página termina de escribirse (para preguntas con menú).
+  say(text, { auto = 0, hold = false } = {}) {
     const all = wrap(text, this.maxWidth);
     const pages = [];
     for (let i = 0; i < all.length; i += 2) pages.push(all.slice(i, i + 2));
     this.container.setVisible(true);
     return new Promise((resolve) => {
-      this.state = { pages, page: 0, shown: 0, auto, waited: 0, resolve };
+      this.state = { pages, page: 0, shown: 0, auto, hold, waited: 0, resolve };
       this._startPage();
       this.active = true;
     });
@@ -85,6 +86,11 @@ export class TextBox {
       return;
     }
     const last = s.page === s.pages.length - 1;
+    if (last && s.hold) {
+      this.active = false;
+      s.resolve();
+      return;
+    }
     if (!(last && s.auto)) this.arrow.setVisible(Math.floor(this.scene.time.now / 300) % 2 === 0);
     s.waited += delta;
     const advance = c.confirm() || (last && s.auto && s.waited >= s.auto);

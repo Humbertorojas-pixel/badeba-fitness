@@ -31,7 +31,7 @@ npm run build     # build de producción en dist/
 ## Estado por fases
 
 - [x] **Fase 1** — movimiento en cuadrícula, piso fijo, combate por turnos estilo Pokémon, audio sintetizado, arte procedural.
-- [ ] Fase 2 — generación procedural de pisos.
+- [x] **Fase 2** — pisos procedurales: 3 biomas (BSP, autómata celular, ruinas erosionadas), decoración por L-Systems, fragmentos multiversales, enemigos únicos por semilla, validación BFS con regeneración determinista.
 - [ ] Fase 3 — stats, inventario y economía de loot.
 - [ ] Fase 4 — guardado/carga.
 - [ ] Fase 5 — IA: Laya (decisiones) + Claude (diálogo libre con NPCs).
