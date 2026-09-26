@@ -49,18 +49,22 @@ export function validateRun(run) {
   const p = run?.player;
   if (!p || !Number.isFinite(p.hp) || p.hp <= 0) problems.push('PS del jugador inválidos');
   if (!Number.isInteger(run?.floor) || run.floor < 1) problems.push('número de piso inválido');
-  const f = run?.floorData;
-  if (f) {
+  // El mapa activo es la mazmorra si el jugador está dentro; si no, la región.
+  const check = (f, label, withPos) => {
     const sizeOk = Number.isInteger(f.w) && Number.isInteger(f.h) && f.w >= 10 && f.h >= 10 && f.w <= 200 && f.h <= 200;
-    if (!sizeOk || !(f.walls instanceof Uint8Array) || f.walls.length !== f.w * f.h) problems.push('mapa corrupto');
-    else {
-      const inside = (q) => q && q.x >= 0 && q.y >= 0 && q.x < f.w && q.y < f.h;
-      const open = (q) => inside(q) && f.walls[q.y * f.w + q.x] === 0;
-      if (!open(f.start) || !open(f.stairs)) problems.push('inicio o escalera fuera del mapa');
-      if (run.pos && !open(run.pos)) problems.push('posición del jugador fuera de los límites');
-      if (!Array.isArray(f.enemies) || f.enemies.some((e) => !inside(e))) problems.push('enemigos fuera del mapa');
+    if (!sizeOk || !(f.walls instanceof Uint8Array) || f.walls.length !== f.w * f.h) {
+      problems.push(`${label} corrupto`);
+      return;
     }
-  }
+    const inside = (q) => q && q.x >= 0 && q.y >= 0 && q.x < f.w && q.y < f.h;
+    const open = (q) => inside(q) && f.walls[q.y * f.w + q.x] === 0;
+    if (!open(f.start) || !open(f.stairs)) problems.push(`inicio o salida fuera del ${label}`);
+    if (withPos && run.pos && !open(run.pos)) problems.push('posición del jugador fuera de los límites');
+    if (!Array.isArray(f.enemies) || f.enemies.some((e) => !inside(e))) problems.push(`enemigos fuera del ${label}`);
+  };
+  const dungeon = run?.dungeon?.data;
+  if (run?.floorData) check(run.floorData, 'mapa', !dungeon);
+  if (dungeon) check(dungeon, 'mapa de la mazmorra', true);
   return problems;
 }
 

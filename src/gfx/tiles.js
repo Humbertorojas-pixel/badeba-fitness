@@ -6,7 +6,7 @@ import { createRng } from '../core/rng.js';
 export const T = {
   VOID: 0, ROCK_TOP: 1, ROCK_FACE: 2, GROUND: 3, TALL_GRASS: 6, PAVED: 7,
   BRIDGE_H: 8, BRIDGE_V: 9, STAIRS: 10, DECAL: 11, ROCK_FACE_HI: 14, GROUND_SHADE: 15,
-  PATH: 16, WATER: 32, GROUND_DARK: 48, GROUND_LUSH: 51, FIELD: 54, FIELD_ALT: 55, WATER_DEEP: 56, ROCK_TOP_ALT: 57, ROCK_FACE_LOW: 58,
+  PATH: 16, WATER: 32, GROUND_DARK: 48, GROUND_LUSH: 51, FIELD: 54, FIELD_ALT: 55, WATER_DEEP: 56, ROCK_TOP_ALT: 57, ROCK_FACE_LOW: 58, TALL_GRASS_ALT: 59,
   WATER_IN: 64, PATH_IN: 80,
 };
 export const TILES_PER_BIOME = 96;
@@ -92,12 +92,12 @@ function shadeTop(b, rows = 6) {
 
 // Hierba alta de Pokémon: matas redondeadas con puntas claras. `sway` inclina las puntas (animación);
 // `front` dibuja solo la fila delantera, que tapa las piernas del jugador.
-function grassTufts(B, { front = false, sway = 0 } = {}) {
+function grassTufts(B, { front = false, sway = 0, alt = false } = {}) {
   const [dark, mid, light] = B.tallGrass;
   const b = new PixelBuffer(16, 16);
   if (!front) b.rect(0, 0, 16, 16, B.ground.colors[0]);
-  const tuft = (bx, by) => {
-    const heights = [3, 5, 6, 7, 6, 5, 3];
+  const tuft = (bx, by, tall = 0) => {
+    const heights = [3, 5, 6, 7, 6, 5, 3].map((h) => h + tall);
     heights.forEach((hgt, i) => {
       const x = bx + i;
       const lean = hgt >= 5 ? sway : 0;
@@ -107,15 +107,12 @@ function grassTufts(B, { front = false, sway = 0 } = {}) {
     });
     b.line(bx, by, bx + 6, by, dark).set(bx + 3, by - 1, dark);
   };
-  if (!front) {
-    tuft(0, 7);
-    tuft(8, 7);
-    tuft(-4, 11);
-    tuft(12, 11);
-  }
-  tuft(4, 15);
-  tuft(-4, 15);
-  tuft(12, 15);
+  // Dos disposiciones de matas: al alternarlas la hierba no forma hileras de ladrillo.
+  const back = alt ? [[3, 6, 1], [11, 8, -1], [-3, 10, 0], [7, 11, 0]] : [[0, 7, 0], [8, 7, 0], [-4, 11, 0], [12, 11, 0]];
+  const frontRow = alt ? [[1, 15, -1], [9, 15, 1], [-5, 15, 0]] : [[4, 15, 0], [-4, 15, 0], [12, 15, 0]];
+  if (!front) for (const [x, y, t] of back) tuft(x, y, t);
+  for (const [x, y, t] of frontRow) tuft(x, y, t);
+  if (alt && !front) b.set(6, 4, PAL.bone2).set(5, 4, PAL.ember2);
   return b;
 }
 
@@ -382,6 +379,7 @@ export function biomeFrames(B, seed = 7331) {
   }
   frames[T.GROUND_SHADE] = shadeTop(groundTile(B, seed + 3, 0));
   frames[T.TALL_GRASS] = grassTufts(B);
+  frames[T.TALL_GRASS_ALT] = grassTufts(B, { alt: true });
   frames[T.PAVED] = groundTile({ ...B, ground: { style: 'paved', colors: B.path } }, seed + 7, 1);
   frames[T.BRIDGE_H] = bridgeTile(false);
   frames[T.BRIDGE_V] = bridgeTile(true);
@@ -414,6 +412,7 @@ export function biomeAnimations(B, base = 0) {
   for (let m = 0; m < 16; m++) anims.push({ index: base + T.WATER + m, frames: [0, 1, 2].map((f) => waterTile(B, m, f)) });
   anims.push({ index: base + T.WATER_DEEP, frames: [0, 1, 2].map((f) => waterTile(B, 15, f, true)) });
   anims.push({ index: base + T.TALL_GRASS, frames: [grassTufts(B), grassTufts(B, { sway: 1 }), grassTufts(B), grassTufts(B, { sway: -1 })], slow: true });
+  anims.push({ index: base + T.TALL_GRASS_ALT, frames: [grassTufts(B, { alt: true }), grassTufts(B, { alt: true, sway: -1 }), grassTufts(B, { alt: true }), grassTufts(B, { alt: true, sway: 1 })], slow: true });
   return anims;
 }
 

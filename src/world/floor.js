@@ -66,7 +66,7 @@ export function computeTiles(floor) {
           tile = x % 2 ? T.FIELD_ALT : T.FIELD;
           break;
         default:
-          if (grass[i]) tile = T.TALL_GRASS;
+          if (grass[i]) tile = (x * 5 + y * 3 + ((x * y) % 7)) % 3 === 0 ? T.TALL_GRASS_ALT : T.TALL_GRASS;
           else if (decal[i]) tile = T.DECAL + decal[i] - 1;
           else if (isRock(x, y - 1)) tile = T.GROUND_SHADE;
           else {
@@ -144,6 +144,6 @@ export function validateFloor(floor) {
   const seen = reachable(floor, floor.start);
   const ok = (p) => seen[p.y * floor.w + p.x] === 1;
   const talkable = (n) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !isBlocked(floor, n.x + dx, n.y + dy) && ok({ x: n.x + dx, y: n.y + dy }));
-  const bonfires = (floor.inspect || []).filter((i) => i.action === 'hoguera');
+  const bonfires = (floor.inspect || []).filter((i) => ['hoguera', 'cofre', 'mazmorra'].includes(i.action));
   return ok(floor.stairs) && floor.enemies.every(ok) && (floor.npcs || []).every(talkable) && bonfires.every(talkable);
 }

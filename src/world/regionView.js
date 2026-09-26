@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { TILE, DEPTH, GAME_W, GAME_H } from '../constants.js';
 import { buildTileset, TILESET_COLS } from '../gfx/tiles.js';
-import { ensurePropTextures, propKey } from '../gfx/propTextures.js';
+import { ensurePropTextures, propKey, ANIMATED } from '../gfx/propTextures.js';
 import { computeTiles, computeOverlay } from './floor.js';
 import { BIOMES } from './biomes.js';
 import { PROPS } from './props.js';
@@ -9,7 +9,7 @@ import { hexToInt, hexToRgb, PAL } from '../palette.js';
 import { BAYER4 } from '../gfx/pixelBuffer.js';
 
 // Punto de luz de cada elemento luminoso (en píxeles dentro de su imagen).
-const LIGHT_AT = { hoguera: [8, 8], farol: [8, 6], hongo: [16, 14], hongo_chico: [8, 8], vela: [8, 8] };
+const LIGHT_AT = { hoguera: [8, 8], farol: [8, 6], hongo: [16, 14], hongo_chico: [8, 8], vela: [8, 8], antorcha: [8, 5], cristal: [8, 8] };
 
 // Solo se muestran los objetos cerca de la cámara: los mapas tienen miles de elementos.
 class Culler {
@@ -139,9 +139,33 @@ function ensureShaftTexture(scene, color) {
   return key;
 }
 
-export function buildRegionView(scene, floor, floorNum) {
+// Oscuridad de las mazmorras: una capa negra en la que se "borran" la luz del jugador y la de
+// antorchas, velas y cristales (con bordes tramados).
+class Darkness {
+  constructor(scene, lights) {
+    this.scene = scene;
+    this.lights = lights;
+    this.rt = scene.add.renderTexture(0, 0, GAME_W, GAME_H).setOrigin(0, 0).setScrollFactor(0).setDepth(DEPTH.overlay - 2.5);
+  }
+
+  update(time, target) {
+    const cam = this.scene.cameras.main;
+    const rt = this.rt;
+    rt.clear();
+    rt.fill(0x0a090e, 0.95);
+    if (target) rt.erase('light_player', Math.round(target.x - cam.scrollX - 80), Math.round(target.y - 10 - cam.scrollY - 64));
+    for (const l of this.lights) {
+      const sx = l.x - cam.scrollX;
+      const sy = l.y - cam.scrollY;
+      if (sx < -48 || sy < -40 || sx > GAME_W + 48 || sy > GAME_H + 40) continue;
+      rt.erase(l.big ? 'light_player' : 'light_small', Math.round(sx - (l.big ? 80 : 40)), Math.round(sy - (l.big ? 64 : 32) + Math.sin(time / 110 + l.x) * 0.6));
+    }
+  }
+}
+
+export function buildRegionView(scene, floor, mapKey, { opened = new Set() } = {}) {
   const B = BIOMES[floor.biome];
-  const tilesKey = `tiles_f${floorNum}`;
+  const tilesKey = `tiles_${mapKey}`;
   const { anims } = buildTileset(scene, B, floor.fragment ? BIOMES[floor.fragment.biome] : null, tilesKey);
   const animator = new TileAnimator(scene, tilesKey, anims);
   const map = scene.make.tilemap({ data: computeTiles(floor), tileWidth: TILE, tileHeight: TILE });
@@ -151,25 +175,47 @@ export function buildRegionView(scene, floor, floorNum) {
   over.createLayer(0, over.addTilesetImage(tilesKey, tilesKey, TILE, TILE, 0, 0), 0, 0).setDepth(DEPTH.floor + 0.5);
 
   const culler = new Culler(scene);
+  const lights = [];
+  const chests = new Map();
   ensurePropTextures(scene, floor.biome, B, floor.props);
   for (const p of floor.props) {
     const def = PROPS[p.k];
     const key = propKey(floor.biome, p);
     const x = p.x * TILE;
     const y = (p.y + 1) * TILE;
-    const img = p.k === 'hoguera' ? scene.add.sprite(x, y, key, 0).play(`${key}_anim`) : scene.add.image(x, y, key);
+    let img;
+    if (ANIMATED[p.k]) img = scene.add.sprite(x, y, key, 0).play(`${key}_anim`);
+    else if (p.k === 'cofre') {
+      img = scene.add.sprite(x, y, key, opened.has(p.id) ? 1 : 0);
+      chests.set(p.id, img);
+    } else img = scene.add.image(x, y, key);
     img.setOrigin(0, 1);
     // Profundidad por la fila de la base: quien pase por detrás queda tapado por copas y techos.
     img.setDepth(def.fp.length ? DEPTH.entity + p.y + 0.4 : DEPTH.decal + 1);
     culler.add(img, x, y - img.height, x + img.width, y);
+    // Humo que sale de las chimeneas.
+    if (def.smoke) {
+      for (let k = 0; k < 3; k++) {
+        const sx = x + def.smoke[0];
+        const sy = y - img.height + def.smoke[1];
+        const puff = scene.add.image(sx, sy, 'smoke').setDepth(DEPTH.entity + p.y + 0.45).setAlpha(0);
+        scene.tweens.add({ targets: puff, y: sy - 18, x: sx + 5, alpha: { from: 0.7, to: 0 }, scale: { from: 0.6, to: 1.4 }, duration: 2400, delay: k * 800, repeat: -1 });
+        culler.add(puff, sx - 8, sy - 24, sx + 12, sy + 4);
+      }
+    }
     if (def.light) {
       const [lx, ly] = LIGHT_AT[p.k] || [img.width / 2, 8];
       const gx = x + lx;
       const gy = y - img.height + ly;
       const glow = scene.add.image(gx, gy, def.light === 'frio' ? 'glow_cold' : 'glow').setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.overlay - 2);
       culler.add(glow, gx - 32, gy - 24, gx + 32, gy + 24);
+      lights.push({ x: gx, y: gy, big: p.k === 'hoguera' });
     }
   }
+  // La salida de la mazmorra: luz que baja por la escala.
+  if (floor.dark && floor.stairs) lights.push({ x: floor.stairs.x * TILE + 8, y: floor.stairs.y * TILE, big: true });
+  const darkness = floor.dark ? new Darkness(scene, lights) : null;
+  let follow = null;
   // Haces de luz: la bóveda de roca tiene grietas por donde se cuela un resplandor pálido.
   const shaftKey = ensureShaftTexture(scene, B.lavaWater ? PAL.ember1 : PAL.bone1);
   const shafts = (floor.shafts || []).map((c, i) => {
@@ -181,13 +227,26 @@ export function buildRegionView(scene, floor, floorNum) {
     return img;
   });
   const s = floor.stairs;
-  scene.add.image(s.x * TILE + 8, s.y * TILE + 8, 'glow_cold').setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.overlay - 2);
+  if (floor.dark) {
+    const beam = scene.add.image(s.x * TILE - 20, (s.y + 1) * TILE - 120, shaftKey).setOrigin(0, 0).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.overlay - 2);
+    beam.phase = 0;
+    shafts.push(beam);
+  } else {
+    scene.add.image(s.x * TILE + 8, s.y * TILE + 8, 'glow_cold').setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.overlay - 2);
+  }
 
   const grassOverlay = scene.add.image(0, 0, `${tilesKey}_grass`).setOrigin(0, 0).setVisible(false);
   const ambience = new Ambience(scene, B.particles);
   return {
     culler,
     ambience,
+    // La luz de la mazmorra sigue al jugador.
+    follow(sprite) {
+      follow = sprite;
+    },
+    openChest(id) {
+      chests.get(id)?.setFrame(1);
+    },
     // La hierba alta tapa las piernas de quien está dentro de ella (como en Pokémon).
     updateGrass(tile, depth) {
       const inGrass = floor.grass[tile.y * floor.w + tile.x] === 1;
@@ -200,6 +259,7 @@ export function buildRegionView(scene, floor, floorNum) {
       ambience.update(time, delta);
       animator.update(delta);
       for (const sh of shafts) if (sh.visible) sh.setAlpha(0.65 + 0.35 * Math.sin(time / 1400 + sh.phase));
+      darkness?.update(time, follow);
     },
   };
 }

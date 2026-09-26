@@ -111,12 +111,12 @@ export class Battle extends Phaser.Scene {
     this.enemy = createEnemyCombatant(template);
     this.player = this.buildPlayerCombatant();
     // El clima también pesa en combate: precisión de ambos y facilidad para huir.
-    this.climate = weatherOf(this.run.weather);
+    this.climate = weatherOf(this.run.dungeon ? null : this.run.weather);
     this.enemy.accBonus += this.climate.acc;
     this.player.accBonus += this.climate.acc;
     this.player.fleeBonus = this.climate.flee;
 
-    const bg = `battle_bg_${this.run.floorData?.biome}`;
+    const bg = `battle_bg_${(this.run.dungeon?.data || this.run.floorData)?.biome}`;
     this.add.image(0, 0, this.textures.exists(bg) ? bg : 'battle_bg').setOrigin(0, 0);
     const tex = ensureMonsterTextures(this, String(template.seed), template);
     this.enemyGroup = this.add.container(0, 0);
@@ -128,7 +128,8 @@ export class Battle extends Phaser.Scene {
       this.enemyGroup.add(this.aura);
       this.tweens.add({ targets: this.aura, alpha: 0.55, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
     }
-    this.enemySprite = this.add.image(ENEMY_BASE.x, ENEMY_BASE.y, tex.big).setOrigin(0.5, 1);
+    this.enemySprite = this.add.sprite(ENEMY_BASE.x, ENEMY_BASE.y, tex.big).setOrigin(0.5, 1);
+    this.enemySprite.play(`${tex.big}_anim`);
     this.enemyGroup.add(this.enemySprite);
     this.playerGroup = this.add.container(0, 0);
     this.playerGroup.add(this.add.image(PLAYER_BASE.x, PLAYER_BASE.y - 8, 'platform_player'));
@@ -143,7 +144,7 @@ export class Battle extends Phaser.Scene {
     this.playerPanel.c.setVisible(false);
 
     this.weather = new WeatherView(this, { world: false, depth: DEPTH.ui - 10 });
-    this.weather.set(this.run.weather?.kind || 'despejado', true);
+    this.weather.set(this.run.dungeon ? 'despejado' : this.run.weather?.kind || 'despejado', true);
     this.textbox = new TextBox(this, this.controls);
     this.textInput = new TextInput(this, this.controls);
     this.actionMenu = new Menu(this, this.controls, {
@@ -267,7 +268,7 @@ export class Battle extends Phaser.Scene {
 
   // Respiración: el enemigo sube y baja un píxel; los espectros flotan.
   startIdle() {
-    const floaty = this.template.archetype === 'wraith';
+    const floaty = this.template.archetype === 'wraith' || ['ojo', 'cabeza_colgante'].includes(this.template.form);
     this.idle = this.tweens.add({
       targets: this.enemySprite, y: ENEMY_BASE.y - (floaty ? 3 : 1), duration: floaty ? 1100 : 700,
       yoyo: true, repeat: -1, ease: 'Sine.inOut',
@@ -482,6 +483,7 @@ export class Battle extends Phaser.Scene {
     if (outcome === 'win') {
       audio.playMusic('victoria');
       retire();
+      if (this.enemyId?.endsWith('_boss')) run.pendingMessage = 'El guardián de la mazmorra ha caído. Lo más hondo queda en silencio; su tesoro ya no tiene dueño.';
       await this.say(`Has sobrevivido a ${this.template.article ? `${this.template.article.toLowerCase()} ` : ''}${this.enemy.name}.`);
       await this.rewards();
     } else if (outcome === 'spared') {

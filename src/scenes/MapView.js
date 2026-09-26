@@ -53,6 +53,14 @@ function buildIcons(scene) {
     b.ellipse(3.5, 3, 3, 3, PAL.bone2).rect(2, 5, 4, 2, PAL.bone2).set(2, 3, PAL.ink).set(5, 3, PAL.ink).set(3, 6, PAL.ink);
     b.outline(PAL.ember1);
   }, 8, 8)]);
+  addStrip(scene, 'map_icon_dungeon', [icon((b) => {
+    b.poly([[0, 8], [0, 3], [4.5, 0], [9, 3], [9, 8]], PAL.stone2).poly([[2, 8], [2, 4], [4.5, 2], [7, 4], [7, 8]], PAL.ink).set(4, 5, PAL.ember2);
+    b.outline(PAL.ink);
+  }, 10, 9)]);
+  addStrip(scene, 'map_icon_chest', [icon((b) => {
+    b.rect(0, 2, 7, 5, PAL.rust2).rect(0, 2, 7, 1, PAL.rust1).set(3, 4, PAL.ember2);
+    b.outline(PAL.ink);
+  }, 8, 8)]);
   addStrip(scene, 'map_icon_player', [icon((b) => {
     b.poly([[3.5, 0], [7, 7], [3.5, 5], [0, 7]], PAL.ember2).set(3, 3, PAL.bone2);
     b.outline(PAL.ink);
@@ -139,7 +147,7 @@ export class MapView extends Phaser.Scene {
 
   create() {
     const run = getRun(this);
-    const f = run.floorData;
+    const f = run.dungeon?.data || run.floorData;
     this.f = f;
     this.controls = createControls(this);
     buildIcons(this);
@@ -162,10 +170,10 @@ export class MapView extends Phaser.Scene {
     this.mapImg = this.add.image(0, 0, 'region_map_2').setOrigin(0, 0);
     this.markers = this.add.container(0, 0);
 
-    const title = `Piso ${run.floor} · ${f.biomeName}`;
+    const title = run.dungeon ? `${run.dungeon.name} · Piso ${run.floor}` : `Piso ${run.floor} · ${f.biomeName}`;
     drawBox(this.add.graphics(), 0, 0, GAME_W, 22);
     pixelText(this, 8, 5, title, 'box');
-    const weather = weatherOf(run.weather).name;
+    const weather = run.dungeon ? 'Bajo tierra' : weatherOf(run.weather).name;
     pixelText(this, GAME_W - 8 - measure(weather), 5, weather, 'faded');
 
     const pos = run.pos || f.start;
@@ -226,15 +234,18 @@ export class MapView extends Phaser.Scene {
       if (!seen(z.x, z.y)) continue;
       if (z.kind === 'aldea') mark(z.x, z.y, 'map_icon_village', z.name);
       else if (z.kind === 'monumento') mark(z.x, z.y, 'map_icon_monument', z.name);
+      else if (z.kind === 'mazmorra' && z.r < 50) mark(z.x, z.y - 1, 'map_icon_dungeon', z.name);
       else if ((z.kind === 'lago' || z.kind === 'bosque') && s === 4) {
         const t = pixelText(this, 0, 0, z.name, 'dim');
         this.markers.add(t);
         this.marks.push({ tx: z.x, ty: z.y, img: null, text: t, center: true });
       }
     }
-    const guard = f.enemies.find((e) => e.id === 'guardian');
-    if (guard && seen(guard.x, guard.y) && !getRun(this).defeated.includes('guardian')) mark(guard.x, guard.y, 'map_icon_danger');
-    if (seen(f.stairs.x, f.stairs.y)) mark(f.stairs.x, f.stairs.y, 'map_icon_stairs', s === 4 ? 'El Descenso' : null);
+    const run = getRun(this);
+    const guard = f.enemies.find((e) => e.id === 'guardian' || e.boss);
+    if (guard && seen(guard.x, guard.y) && !run.defeated.includes(guard.id)) mark(guard.x, guard.y, 'map_icon_danger');
+    for (const c of f.inspect.filter((i) => i.action === 'cofre')) if (seen(c.x, c.y) && !(run.opened || []).includes(c.id)) mark(c.x, c.y, 'map_icon_chest');
+    if (seen(f.stairs.x, f.stairs.y)) mark(f.stairs.x, f.stairs.y, 'map_icon_stairs', s === 4 ? (f.dark ? 'Salida' : 'El Descenso') : null);
     this.player = this.add.image(0, 0, 'map_icon_player').setOrigin(0.5, 0.5);
     this.markers.add(this.player);
     this.marks.push({ tx: this.pos.x, ty: this.pos.y, img: this.player, text: null });

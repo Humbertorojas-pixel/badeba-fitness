@@ -46,6 +46,11 @@ export function buildMisc(scene) {
     ditheredRadial(ctx, 64, 48, { cx: 32, cy: 24, rx: 30, ry: 22, inner: 0.0, outer: 1.0, maxAlpha: 0.22, color: PAL.steel3, invert: true }));
 
 
+  // Pinceles de luz para la oscuridad de las mazmorras (se borran de la capa negra).
+  canvasTexture(scene, 'light_player', 160, 128, (ctx) =>
+    ditheredRadial(ctx, 160, 128, { cx: 80, cy: 64, rx: 76, ry: 60, inner: 0.35, outer: 1.0, maxAlpha: 1, color: PAL.ink, invert: true }));
+  canvasTexture(scene, 'light_small', 80, 64, (ctx) =>
+    ditheredRadial(ctx, 80, 64, { cx: 40, cy: 32, rx: 38, ry: 30, inner: 0.2, outer: 1.0, maxAlpha: 0.9, color: PAL.ink, invert: true }));
   canvasTexture(scene, 'aura_legendario', 112, 96, (ctx) =>
     ditheredRadial(ctx, 112, 96, { cx: 56, cy: 48, rx: 52, ry: 44, inner: 0.0, outer: 1.0, maxAlpha: 0.4, color: PAL.ember1, invert: true }));
   canvasTexture(scene, 'aura_unico', 112, 96, (ctx) =>
@@ -59,6 +64,10 @@ export function buildMisc(scene) {
   next.poly([[0, 0], [7, 0], [3.5, 4.5]], PAL.blood2);
   next.outline(PAL.ink);
   addStrip(scene, 'ui_next', [next.shift(0, 0)]);
+
+  const smoke = new PixelBuffer(7, 7);
+  for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) if ((x - 3) ** 2 + (y - 3) ** 2 <= 9 && (x + y) % 2 === 0) smoke.set(x, y, (x - 3) ** 2 + (y - 3) ** 2 <= 3 ? PAL.stone3 : PAL.stone2);
+  addStrip(scene, 'smoke', [smoke]);
 
   const shadow = new PixelBuffer(14, 5).ellipse(7, 2.5, 6.5, 2.2, PAL.ink);
   addStrip(scene, 'shadow', [shadow]);
@@ -94,6 +103,10 @@ function paintBattleBg(ctx, bands, silhouette, floorColor, seed) {
     } else if (silhouette === 'juncos') {
       for (let k = 0; k < 6; k++) sil.line(x + k * 3, base, x + k * 3 + rng.int(-2, 2), base - rng.int(14, 30), dark);
       if (rng.chance(0.4)) sil.line(x + 10, base, x + 12, base - 60, dark, 3).line(x + 12, base - 40, x + 24, base - 55, dark, 2);
+    } else if (silhouette === 'estalactitas') {
+      const hgt = rng.int(14, 40);
+      sil.poly([[x, 0], [x + rng.int(8, 14), 0], [x + 5, hgt]], dark);
+      if (rng.chance(0.6)) sil.poly([[x + 20, base], [x + 30, base], [x + 25, base - rng.int(12, 30)]], dark);
     } else if (silhouette === 'columnas') {
       const hgt = rng.int(30, 90);
       sil.rect(x, base - hgt, rng.int(6, 12), hgt, dark);

@@ -41,6 +41,13 @@ function scaleMods(mods, depth) {
   return out;
 }
 
+// Concordancia para bases en plural ("Harapos rúnicos").
+function plural(word) {
+  if (word.startsWith('de') || word.startsWith('del')) return word;
+  if (word.endsWith('z')) return `${word.slice(0, -1)}ces`;
+  return /[aeiouáéíóú]$/.test(word) ? `${word}s` : `${word}es`;
+}
+
 let itemCounter = 0;
 export function generateItem(rng, rarity, depth, slot = rng.pick(Object.keys(BASES))) {
   const id = `it${Date.now().toString(36)}${(itemCounter++).toString(36)}${rng.int(0, 9999)}`;
@@ -57,7 +64,7 @@ export function generateItem(rng, rarity, depth, slot = rng.pick(Object.keys(BAS
   for (const affix of rng.shuffle(AFFIXES).slice(0, affixCount)) {
     addMods(mods, scaleMods(affix.mods, depth));
     if (affix.effect) effect = affix.effect;
-    if (rarity === 'raro') name = `${name} ${affix.name[g]}`;
+    if (rarity === 'raro') name = `${name} ${base.plural ? plural(affix.name[g]) : affix.name[g]}`;
   }
   if (rarity === 'legendario') {
     addMods(mods, { atk: slot === 'arma' ? 3 : 0, def: slot === 'armadura' ? 3 : 0, hp: slot === 'reliquia' ? 8 : 0 });

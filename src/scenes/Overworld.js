@@ -26,6 +26,10 @@ import { fallbackGreeting, fallbackReply, BLOCKED_REPLY } from '../ai/npcFallbac
 import { generateEnemyTemplate } from '../world/enemyGen.js';
 import { initialWeather, stepWeather, weatherOf, WEATHERS } from '../world/weather.js';
 import { WeatherView } from '../gfx/weatherView.js';
+import { generateDungeon } from '../world/dungeon.js';
+import { ensureItemIcon } from '../gfx/itemArt.js';
+import { itemDisplayName } from '../core/loot.js';
+import { RARITY_LABEL } from '../data/items.js';
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const OPPOSITE = { up: 'down', down: 'up', left: 'right', right: 'left' };
@@ -54,16 +58,20 @@ export class Overworld extends Phaser.Scene {
     }
     const freshFloor = !this.run.floorData;
     if (freshFloor) this.buildFloorData();
-    const floor = this.run.floorData;
+    // Dentro de una mazmorra el mapa activo es el suyo; la región espera arriba.
+    this.inDungeon = !!this.run.dungeon;
+    const floor = this.inDungeon ? this.run.dungeon.data : this.run.floorData;
     this.floor = floor;
-    this.view = buildRegionView(this, floor, this.run.floor);
+    const mapKey = this.inDungeon ? `f${this.run.floor}_${this.run.dungeon.id}` : `f${this.run.floor}`;
+    this.view = buildRegionView(this, floor, mapKey, { opened: new Set(this.run.opened || []) });
 
     this.enemies = floor.enemies
       .filter((e) => !this.run.defeated.includes(e.id))
       .map((e) => {
         const tex = ensureMonsterTextures(this, String(e.template.seed), e.template);
         const shadow = this.add.image(e.x * TILE + 8, e.y * TILE + 15, 'shadow').setDepth(DEPTH.entity + e.y + 0.3);
-        const sprite = this.add.image(e.x * TILE + 8, e.y * TILE + 15, tex.small).setOrigin(0.5, 1).setDepth(DEPTH.entity + e.y + 0.5);
+        const sprite = this.add.sprite(e.x * TILE + 8, e.y * TILE + 15, tex.small).setOrigin(0.5, 1).setDepth(DEPTH.entity + e.y + 0.5);
+        sprite.play({ key: `${tex.small}_anim`, startFrame: (e.x + e.y) % 2 });
         return { data: e, id: e.id, x: e.x, y: e.y, template: e.template, sprite, shadow, busy: false };
       });
 
@@ -81,6 +89,7 @@ export class Overworld extends Phaser.Scene {
     this.hero = ensureHeroTextures(this, this.run.player.equipment);
     this.player = this.add.sprite(0, 0, this.hero.key, DIR_FRAME_BASE[this.facing]).setOrigin(0.5, 1);
     this.placePlayer();
+    this.view.follow(this.player);
 
     const cam = this.cameras.main;
     cam.setBounds(0, 0, floor.w * TILE, floor.h * TILE);
@@ -93,7 +102,7 @@ export class Overworld extends Phaser.Scene {
     this.weatherRng = createRng((this.run.seed ^ (this.run.floor * 104729) ^ Date.now()) >>> 0);
     if (!this.run.weather) this.run.weather = initialWeather(this.weatherRng, floor.biome, this.run.floor);
     this.weather = new WeatherView(this, { world: true, onLightning: () => this.reveal(LIGHTNING_REVEAL) });
-    this.weather.set(this.run.weather.kind, true);
+    this.weather.set(this.inDungeon ? 'despejado' : this.run.weather.kind, true);
     this.textbox = new TextBox(this, this.controls);
     this.textInput = new TextInput(this, this.controls);
     this.dialogRng = createRng((this.run.seed ^ Date.now()) >>> 0);
@@ -109,7 +118,10 @@ export class Overworld extends Phaser.Scene {
 
     audio.playMusic(this.musicHere());
     cam.fadeIn(350);
-    if (this.run.locationShown !== this.run.floor) {
+    if (this.run.pendingLocation) {
+      this.showLocation(this.run.pendingLocation);
+      this.run.pendingLocation = null;
+    } else if (this.run.locationShown !== this.run.floor) {
       this.run.locationShown = this.run.floor;
       this.showLocation(`Piso ${this.run.floor} · ${floor.biomeName}`);
     }
@@ -121,7 +133,10 @@ export class Overworld extends Phaser.Scene {
       this.run.pendingMessage = null;
       this.dialog(msg);
     }
-    if (freshFloor) this.autosave();
+    if (freshFloor || this.run.autosavePending) {
+      this.run.autosavePending = false;
+      this.autosave();
+    }
     this.time.addEvent({ delay: 650, loop: true, callback: () => this.roamEnemies() });
     const onResume = () => {
       this.busy = false;
@@ -155,7 +170,7 @@ export class Overworld extends Phaser.Scene {
 
   // Niebla de guerra: lo explorado queda en el MAPA. El clima acorta o alarga la vista
   // (y un relámpago ilumina de golpe una zona amplia).
-  reveal(radius = weatherOf(this.run.weather).reveal) {
+  reveal(radius = this.inDungeon ? 5 : weatherOf(this.run.weather).reveal) {
     const { w, h, seen } = this.floor;
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
@@ -298,9 +313,6 @@ export class Overworld extends Phaser.Scene {
   update(time, delta) {
     this.view.update(time, delta);
     this.weather.update(time, delta);
-    // Las criaturas respiran (un píxel arriba y abajo) mientras esperan.
-    const phase = Math.floor(time / 450) % 2;
-    for (const e of this.enemies) if (!e.busy && e.sprite.visible !== false) e.sprite.y = e.y * TILE + 15 - ((phase + e.x) % 2);
     if (this.busy || this.moving) return;
     if (this.turnLock > 0) this.turnLock -= delta;
 
@@ -348,6 +360,8 @@ export class Overworld extends Phaser.Scene {
     if (!spot) return;
     audio.sfx('inspect');
     if (spot.action === 'hoguera') this.rest();
+    else if (spot.action === 'mazmorra') this.askEnterDungeon(spot.id);
+    else if (spot.action === 'cofre') this.openChest(spot);
     else this.dialog(spot.text);
   }
 
@@ -483,6 +497,11 @@ export class Overworld extends Phaser.Scene {
       this.startBattle(enemy);
       return;
     }
+    const door = this.floor.inspect.find((i) => i.action === 'mazmorra' && i.x === nx && i.y === ny);
+    if (door) {
+      this.askEnterDungeon(door.id);
+      return;
+    }
     if (isBlocked(this.floor, nx, ny) || this.npcAt(nx, ny) || this.enemies.some((e) => e.busy && e.tx === nx && e.ty === ny)) {
       this.player.anims.play(this.hero.walk(dir), true);
       if (this.time.now - this.lastBump > 320) {
@@ -515,7 +534,7 @@ export class Overworld extends Phaser.Scene {
 
   afterStep() {
     audio.playMusic(this.musicHere());
-    const changed = stepWeather(this.run.weather, this.weatherRng, this.floor.biome);
+    const changed = this.inDungeon ? null : stepWeather(this.run.weather, this.weatherRng, this.floor.biome);
     if (changed) {
       this.weather.set(changed);
       this.toast(WEATHERS[changed].name);
@@ -536,7 +555,8 @@ export class Overworld extends Phaser.Scene {
     }
     const { stairs } = this.floor;
     if (this.tile.x === stairs.x && this.tile.y === stairs.y) {
-      this.askDescend();
+      if (this.inDungeon) this.askExitDungeon();
+      else this.askDescend();
       return;
     }
     // Tras huir, el enemigo no vuelve a detectarte hasta que salgas de su línea de visión.
@@ -608,7 +628,7 @@ export class Overworld extends Phaser.Scene {
     const dy = this.tile.y - e.y;
     if (dx !== 0 && dy !== 0) return false;
     const dist = Math.abs(dx) + Math.abs(dy);
-    if (dist === 0 || dist > weatherOf(this.run.weather).sight) return false;
+    if (dist === 0 || dist > (this.inDungeon ? 4 : weatherOf(this.run.weather).sight)) return false;
     const sx = Math.sign(dx);
     const sy = Math.sign(dy);
     for (let i = 1; i < dist; i++) {
@@ -653,6 +673,103 @@ export class Overworld extends Phaser.Scene {
     });
   }
 
+  async confirm(text) {
+    await this.textbox.say(text, { hold: true });
+    const menu = new Menu(this, this.controls, { x: GAME_W - 64, y: 64, w: 60, h: 46, items: [{ label: 'Sí' }, { label: 'No' }] });
+    const choice = await menu.open(0);
+    menu.destroy();
+    this.textbox.hide();
+    return choice === 0;
+  }
+
+  async askEnterDungeon(id) {
+    this.busy = true;
+    this.player.anims.stop();
+    const d = this.floor.dungeons?.find((q) => q.id === id);
+    if (!d) { this.busy = false; return; }
+    audio.sfx('inspect');
+    if (!(await this.confirm(`${d.name}. Un aliento frío sube desde la oscuridad. ¿Entrar?`))) {
+      this.busy = false;
+      return;
+    }
+    this.enterDungeon(d);
+  }
+
+  // Genera la mazmorra (determinista) y fija el botín de sus criaturas la primera vez.
+  enterDungeon(d) {
+    const run = this.run;
+    const data = generateDungeon({ seed: hashSeed(this.floor.seed, d.id), depth: run.floor, theme: d.theme, id: `${run.floor}_${d.id}`, name: d.name });
+    run.dungeonLoot ||= {};
+    const rng = createRng(hashSeed(data.seed, 'loot'));
+    const intelligence = derive(run.player).int;
+    const { pity } = getProfile(this);
+    for (const e of data.enemies) {
+      if (!(e.id in run.dungeonLoot)) run.dungeonLoot[e.id] = rollEnemyLoot(rng, pity, run.floor, intelligence, e.template.rank);
+      e.template.loot = run.dungeonLoot[e.id];
+    }
+    run.dungeon = { id: d.id, name: d.name, data, returnPos: { ...d.front } };
+    run.visitedDungeons ||= [];
+    if (!run.visitedDungeons.includes(`${run.floor}_${d.id}`)) {
+      run.visitedDungeons.push(`${run.floor}_${d.id}`);
+      run.pendingMessage = 'La oscuridad aquí abajo es más espesa. Tu luz apenas alcanza unos pasos. Algo guarda lo más hondo.';
+    }
+    run.pos = null;
+    run.facing = 'down';
+    run.pendingLocation = d.name;
+    run.autosavePending = true;
+    this.travel();
+  }
+
+  async askExitDungeon() {
+    this.busy = true;
+    if (!(await this.confirm('La escala sube hacia la región. ¿Volver a la superficie?'))) {
+      this.busy = false;
+      return;
+    }
+    const run = this.run;
+    run.pos = { ...run.dungeon.returnPos };
+    run.facing = 'down';
+    run.pendingLocation = `Piso ${run.floor} · ${run.floorData.biomeName}`;
+    run.dungeon = null;
+    run.autosavePending = true;
+    this.travel();
+  }
+
+  travel() {
+    audio.sfx('stairs');
+    this.cameras.main.fadeOut(450, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.restart());
+  }
+
+  // Cofres: botín con rareza mínima rara; el del jefe acelera el destino (pity) como un legendario.
+  async openChest(spot) {
+    const run = this.run;
+    run.opened ||= [];
+    if (run.opened.includes(spot.id)) {
+      this.dialog('El cofre está vacío.');
+      return;
+    }
+    this.busy = true;
+    this.player.anims.stop();
+    run.opened.push(spot.id);
+    this.view.openChest(spot.id);
+    audio.sfx('encounter');
+    const rng = createRng(hashSeed(this.floor.seed, spot.id));
+    const loot = rollEnemyLoot(rng, getProfile(this).pity, run.floor, derive(run.player).int, spot.boss ? 'legendario' : 'raro');
+    if (loot.kind === 'consumable') run.bag.consumables[loot.key] = (run.bag.consumables[loot.key] || 0) + 1;
+    else run.bag.gear.push(loot);
+    run.bag.consumables.tonico = (run.bag.consumables.tonico || 0) + 1;
+    const card = this.add.container(spot.x * TILE + 8, spot.y * TILE - 14).setDepth(DEPTH.ui);
+    card.add(drawBox(this.add.graphics(), -17, -17, 34, 34));
+    card.add(this.add.image(0, 0, ensureItemIcon(this, loot)));
+    this.tweens.add({ targets: card, y: card.y - 8, duration: 300, ease: 'Back.out' });
+    const tag = loot.kind === 'equip' ? ` (${RARITY_LABEL[loot.rarity]})` : '';
+    await this.textbox.say(`Dentro del cofre: ${itemDisplayName(loot)}${tag}. También hay un tónico.`);
+    card.destroy();
+    this.textbox.hide();
+    this.busy = false;
+  }
+
   async askDescend() {
     this.busy = true;
     await this.textbox.say('Escalones hacia el siguiente piso. No hay vuelta atrás. ¿Descender?', { hold: true });
@@ -678,6 +795,9 @@ export class Overworld extends Phaser.Scene {
       this.run.defeated = [];
       this.run.floorData = null;
       this.run.weather = null;
+      this.run.dungeon = null;
+      this.run.opened = [];
+      this.run.dungeonLoot = {};
       this.run.pos = null;
       this.run.facing = 'down';
       this.scene.restart();

@@ -19,6 +19,7 @@ export const BIOMES = {
     decals: ['raices', 'flores', 'musgo'],
     house: 'madera',
     landmark: 'arbol_ancestral',
+    dungeon: 'cueva',
     particles: { kind: 'esporas', colors: [PAL.ember2, PAL.moss2, PAL.bone1] },
     battle: { bands: [PAL.ink, PAL.night, PAL.moss0, PAL.moss1], silhouette: 'arboles', floor: PAL.moss0 },
     archetypes: { beast: 3, crawler: 3, wraith: 1, humanoid: 1, undead: 1, eldritch: 1 },
@@ -42,6 +43,7 @@ export const BIOMES = {
     decals: ['huesos', 'grietas', 'huesos'],
     house: 'mausoleo',
     landmark: 'coloso',
+    dungeon: 'cripta',
     particles: { kind: 'ceniza', colors: [PAL.bone0, PAL.stone3, PAL.bone1] },
     battle: { bands: [PAL.ink, PAL.night, PAL.shade, PAL.dusk], silhouette: 'lapidas', floor: PAL.stone0 },
     archetypes: { humanoid: 2, wraith: 3, beast: 1, crawler: 1, undead: 4, ito: 1 },
@@ -58,7 +60,7 @@ export const BIOMES = {
     water: [PAL.moss0, PAL.steel0, PAL.steel1],
     rock: { top: [PAL.ink, PAL.night, PAL.moss0, PAL.rust0], face: [PAL.night, PAL.rust0, PAL.moss0, PAL.moss1], style: 'rock' },
     tallGrass: [PAL.moss0, PAL.moss1, PAL.moss2],
-    leaves: [PAL.night, PAL.moss0, PAL.moss1, PAL.bone0],
+    leaves: [PAL.night, PAL.moss0, PAL.moss1, PAL.moss2],
     geo: { water: 0.44, rock: 0.72, forest: 0.5, treeDensity: 0.4, grass: 0.45, river: 1 },
     trees: ['sauce', 'seco', 'sauce'],
     rareTree: ['hongo', 0.04],
@@ -66,6 +68,7 @@ export const BIOMES = {
     decals: ['musgo', 'raices', 'musgo'],
     house: 'palafito',
     landmark: 'arbol_ancestral',
+    dungeon: 'cueva',
     particles: { kind: 'niebla', colors: [PAL.stone2, PAL.stone3, PAL.bone0] },
     battle: { bands: [PAL.ink, PAL.moss0, PAL.moss1, PAL.stone1], silhouette: 'juncos', floor: PAL.moss0 },
     archetypes: { crawler: 2, beast: 2, wraith: 2, eldritch: 4, ito: 1, undead: 1 },
@@ -89,6 +92,7 @@ export const BIOMES = {
     decals: ['escombros', 'grietas', 'sangre'],
     house: 'ruina',
     landmark: 'coloso',
+    dungeon: 'cripta',
     particles: { kind: 'polvo', colors: [PAL.stone3, PAL.bone0, PAL.stone2] },
     battle: { bands: [PAL.ink, PAL.night, PAL.steel0, PAL.steel1], silhouette: 'columnas', floor: PAL.steel0 },
     archetypes: { humanoid: 3, wraith: 2, beast: 1, ito: 3, undead: 2, eldritch: 1 },
@@ -112,6 +116,7 @@ export const BIOMES = {
     decals: ['grietas', 'huesos', 'sangre'],
     house: 'ruina',
     landmark: 'costillar',
+    dungeon: 'cueva',
     particles: { kind: 'brasas', colors: [PAL.ember1, PAL.blood3, PAL.ember2] },
     battle: { bands: [PAL.ink, PAL.blood0, PAL.shade, PAL.dusk], silhouette: 'costillas', floor: PAL.shade },
     archetypes: { wraith: 2, beast: 3, humanoid: 1, eldritch: 2, undead: 2 },
@@ -136,6 +141,48 @@ export const BIOMES = {
     ramps: ['rust', 'void'],
   },
 };
+
+// Mazmorras: la cueva hereda la roca y el agua (o la lava) de su región; la cripta es de piedra.
+function caveTheme(R) {
+  return {
+    name: 'Cueva', music: 'caverna', dungeon: 'cueva',
+    ground: { style: 'ash', colors: [PAL.shade, PAL.stone0, PAL.stone1] },
+    path: R.path, water: R.water, lavaWater: R.lavaWater,
+    rock: { top: [PAL.ink, PAL.ink, PAL.night, PAL.shade], face: R.rock.face, style: 'rock' },
+    tallGrass: R.tallGrass, leaves: R.leaves,
+    decals: ['grietas', 'huesos', 'musgo'],
+    decor: [['estalagmita', 0.05, 'roca'], ['cristal', 0.012, 'roca'], ['roca', 0.02], ['hongo_chico', 0.012], ['huesos', 0.01], ['telarana', 0.02, 'roca']],
+    particles: { kind: 'polvo', colors: [PAL.stone2, PAL.stone1, PAL.bone0] },
+    battle: { bands: [PAL.ink, PAL.ink, PAL.night, PAL.shade], silhouette: 'estalactitas', floor: PAL.shade },
+    archetypes: { crawler: 3, beast: 2, eldritch: 2, undead: 1 },
+    ramps: R.ramps,
+    names: ['Cueva de los Susurros', 'Gruta del Hambre', 'Madriguera Honda', 'Cueva del Eco Roto', 'Sima de las Uñas'],
+  };
+}
+
+export const CRYPT = {
+  name: 'Cripta', music: 'catacumbas', dungeon: 'cripta',
+  ground: { style: 'paved', colors: [PAL.shade, PAL.stone0, PAL.stone1] },
+  path: [PAL.shade, PAL.stone0, PAL.stone1],
+  water: [PAL.ink, PAL.night, PAL.dusk],
+  rock: { top: [PAL.ink, PAL.ink, PAL.night, PAL.shade], face: [PAL.shade, PAL.stone0, PAL.stone1, PAL.stone2], style: 'brick' },
+  tallGrass: [PAL.stone0, PAL.bone0, PAL.bone1],
+  leaves: [PAL.ink, PAL.shade, PAL.dusk, PAL.stone1],
+  decals: ['huesos', 'grietas', 'sangre'],
+  decor: [['vela', 0.02], ['urna', 0.012], ['huesos', 0.015], ['telarana', 0.03, 'roca']],
+  particles: { kind: 'ceniza', colors: [PAL.bone0, PAL.stone3, PAL.bone1] },
+  battle: { bands: [PAL.ink, PAL.night, PAL.shade, PAL.dusk], silhouette: 'columnas', floor: PAL.stone0 },
+  archetypes: { undead: 4, wraith: 2, humanoid: 1, ito: 1 },
+  ramps: ['bone', 'void', 'flesh'],
+  names: ['Cripta de los Olvidados', 'Osario del Obispo', 'Panteón Sellado', 'Catacumba de las Velas', 'Tumba del Rey Mendigo'],
+};
+
+for (const key of ['bosque', 'pantano', 'ceniza']) BIOMES[`cueva_${key}`] = caveTheme(BIOMES[key]);
+BIOMES.cripta = CRYPT;
+
+export function dungeonThemeKey(regionKey) {
+  return BIOMES[regionKey].dungeon === 'cripta' ? 'cripta' : `cueva_${regionKey}`;
+}
 
 export const REGION_BIOMES = ['bosque', 'necropolis', 'pantano', 'ciudad', 'ceniza'];
 

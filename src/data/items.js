@@ -14,7 +14,7 @@ export const BASES = {
     { name: 'Mandoble', gender: 'm', look: 'mandoble', mods: { atk: 5, spd: -2 } },
   ],
   armadura: [
-    { name: 'Harapos', gender: 'm', look: 'harapos', mods: { def: 1 } },
+    { name: 'Harapos', gender: 'm', plural: true, look: 'harapos', mods: { def: 1 } },
     { name: 'Capa de cuero', gender: 'f', look: 'cuero', mods: { def: 2, spd: 1 } },
     { name: 'Hábito ritual', gender: 'm', look: 'habito', mods: { def: 1, int: 2, mana: 2 } },
     { name: 'Cota de malla', gender: 'f', look: 'cota', mods: { def: 3 } },

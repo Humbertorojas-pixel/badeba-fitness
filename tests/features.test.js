@@ -13,6 +13,8 @@ import { buildHeroOverworld, buildHeroBack, lookFromEquipment, lookSignature, HE
 import { generateMonster } from '../src/gfx/monsterGen.js';
 import { generateFloor } from '../src/world/generate.js';
 import { fleeChance } from '../src/core/battle.js';
+import { generateDungeon } from '../src/world/dungeon.js';
+import { reachable } from '../src/world/floor.js';
 
 describe('clima', () => {
   it('el primer piso empieza en calma y cada bioma usa sus propios climas', () => {
@@ -203,5 +205,38 @@ describe('iconos de objetos', () => {
     expect(itemMaterial({ rarity: 'unico', name: 'Lanza del Alba' })).toBe('divino');
     expect(itemMaterial({ rarity: 'unico', name: 'Hoja del Eclipse' })).toBe('infernal');
     expect(itemMaterial({ rarity: 'legendario' })).toBe('legendario');
+  });
+});
+
+describe('mazmorras', () => {
+  it('cada región tiene entradas a mazmorras accesibles', () => {
+    for (let s = 1; s <= 8; s++) {
+      const f = generateFloor({ runSeed: s, depth: 1 + (s % 5) });
+      expect(f.dungeons.length).toBeGreaterThan(0);
+      const seen = reachable(f, f.start);
+      for (const d of f.dungeons) {
+        expect(seen[d.front.y * f.w + d.front.x]).toBe(1);
+        expect(f.inspect.some((i) => i.action === 'mazmorra' && i.id === d.id)).toBe(true);
+      }
+    }
+  });
+
+  it('cuevas y criptas: deterministas, con salida, jefe, cofres y más criaturas', () => {
+    for (const theme of ['cueva_bosque', 'cueva_pantano', 'cueva_ceniza', 'cripta']) {
+      for (let s = 0; s < 6; s++) {
+        const opts = { seed: 100 + s, depth: 1 + s, theme, id: 'm0', name: 'X' };
+        const a = generateDungeon(opts);
+        const b = generateDungeon(opts);
+        expect(a.walls).toEqual(b.walls);
+        expect(a.dark).toBe(true);
+        const seen = reachable(a, a.start);
+        expect(seen[a.stairs.y * a.w + a.stairs.x]).toBe(1);
+        const boss = a.enemies.find((e) => e.boss);
+        expect(['raro', 'legendario']).toContain(boss.template.rank);
+        expect(a.inspect.filter((i) => i.action === 'cofre').length).toBeGreaterThanOrEqual(2);
+        expect(a.enemies.length).toBeGreaterThanOrEqual(8);
+        expect(new Set(a.enemies.map((e) => e.id)).size).toBe(a.enemies.length);
+      }
+    }
   });
 });

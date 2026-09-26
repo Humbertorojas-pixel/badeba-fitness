@@ -32,3 +32,13 @@ export const LANDMARK_LORE = {
   arbol_ancestral: 'Un árbol más viejo que el pozo. Sus raíces atraviesan pisos enteros; dicen que en su hueco duerme quien lo plantó.',
   costillar: 'Las costillas de un titán forman un túnel. Caminas por dentro de algo que murió antes de que existiera el primer piso.',
 };
+
+// Inscripciones y restos dentro de las mazmorras.
+export const DUNGEON_LORE = [
+  'Entre los huesos, un diario empapado: «Bajé por el tesoro. Me quedé por el silencio».',
+  'Alguien grabó en la piedra, con las uñas: «NO SIGAS LA LUZ DE ABAJO».',
+  'Una mochila podrida. Dentro, una carta sin terminar a alguien que ya no existe.',
+  'Marcas de cuenta en la pared: cientos. La última está a medias.',
+  'Un símbolo en espiral tallado una y otra vez, cada vez más pequeño, hasta volverse un punto.',
+  'Un esqueleto abrazado a un cofre vacío. Parece satisfecho.',
+];

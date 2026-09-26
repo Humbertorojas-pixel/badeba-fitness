@@ -1,5 +1,5 @@
 import { createRng, hashSeed } from '../core/rng.js';
-import { BIOMES, pickBiome } from './biomes.js';
+import { BIOMES, pickBiome, dungeonThemeKey } from './biomes.js';
 import { PROPS, footprint } from './props.js';
 import { fbm, valueNoise, astar, mst, N4 } from './terrain.js';
 import { LSYSTEMS, expand, turtle } from './lsystem.js';
@@ -174,6 +174,39 @@ function tryGenerate(seed, depth, forceFragment) {
   if (landmark) flatten(landmark, 5);
   flatten(start, 3);
   flatten(stairs, 3);
+
+  // Entradas a mazmorras: bocas de cueva en acantilados de doble altura o criptas en claros.
+  const themeKey = dungeonThemeKey(biomeKey);
+  const entrances = [];
+  const wantDungeons = w >= 160 ? 3 : 2;
+  const mainSet = new Set(main);
+  if (B.dungeon === 'cripta') {
+    for (let i = 0; i < wantDungeons * 3 && entrances.length < wantDungeons; i++) {
+      const c = samplePoi(3, 0.85, 16);
+      if (!c || entrances.some((e) => dist(e.front, c) < 20)) continue;
+      flatten(c, 3);
+      const front = { x: c.x, y: c.y + 1 };
+      entrances.push({ x: c.x - 1, y: c.y, door: { x: c.x, y: c.y }, front, crypt: true });
+      pois.push(front);
+    }
+  } else {
+    const cands = [];
+    for (let y = 4; y < h - 5; y++) {
+      for (let x = 3; x < w - 5; x++) {
+        const rockPair = (yy) => gAt(x, yy) === G.ROCK && gAt(x + 1, yy) === G.ROCK;
+        const groundPair = (yy) => gAt(x, yy) === G.GROUND && gAt(x + 1, yy) === G.GROUND;
+        if (rockPair(y) && rockPair(y - 1) && groundPair(y + 1) && groundPair(y + 2) && mainSet.has(idx(x, y + 1))) cands.push({ x, y });
+      }
+    }
+    for (const c of rng.shuffle(cands)) {
+      if (entrances.length >= wantDungeons) break;
+      const front = { x: c.x, y: c.y + 1 };
+      if (dist(front, start) < 16 || pois.some((p) => dist(p, front) < 12) || entrances.some((e) => dist(e.front, front) < 20)) continue;
+      entrances.push({ x: c.x, y: c.y, door: { x: c.x, y: c.y }, front });
+      pois.push(front);
+      for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) reserved[idx(front.x + dx, front.y + dy)] = 1;
+    }
+  }
 
   // 4. Caminos: árbol mínimo entre puntos + atajos. Puentes sobre agua, túneles en roca.
   const edges = mst(pois);
@@ -366,6 +399,20 @@ function tryGenerate(seed, depth, forceFragment) {
     signs.push(spot);
   }
 
+  // Mazmorras: la estructura de la entrada, su nombre y la zona que anuncia el cartel.
+  const dungeonNames = rng.shuffle(BIOMES[themeKey].names.slice());
+  f.dungeons = [];
+  entrances.forEach((e, i) => {
+    const ok = e.crypt ? place('cripta', e.x, e.y, 0, { allowPath: true }) : place('cueva', e.x, e.y);
+    if (!ok) return;
+    const id = `m${i}`;
+    const name = dungeonNames[i % dungeonNames.length];
+    const cells = e.crypt ? [e.door] : [e.door, { x: e.door.x + 1, y: e.door.y }];
+    for (const c of cells) f.inspect.push({ x: c.x, y: c.y, action: 'mazmorra', id });
+    f.dungeons.push({ id, name, theme: themeKey, x: e.door.x, y: e.door.y, front: e.front });
+    f.zones.push({ name, kind: 'mazmorra', x: e.front.x, y: e.front.y, r: 3 });
+  });
+
   // El Descenso: el pozo hacia el siguiente piso.
   f.stairs = stairs;
   ground[idx(stairs.x, stairs.y)] = G.PAVED;
@@ -412,6 +459,22 @@ function tryGenerate(seed, depth, forceFragment) {
       decal[idx(x, y)] = which + 1;
       return true;
     }, { skip: sys.skip });
+  }
+
+  // Vida en el agua: nenúfares y rocas junto a la orilla (o rocas encendidas en la lava).
+  const shore = (x, y) => [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2]].some(([dx, dy]) => gAt(x + dx, y + dy) === G.GROUND);
+  for (let i = 0; i < N; i++) {
+    if (ground[i] !== G.WATER) continue;
+    const x = i % w;
+    const y = Math.floor(i / w);
+    if (!shore(x, y) || f.fragment?.cells?.has(i)) continue;
+    if (B.lavaWater) {
+      if (rng.chance(0.025)) props.push({ k: 'roca_lava', x, y, v: rng.int(0, 1) });
+    } else if (rng.chance(biomeKey === 'pantano' ? 0.1 : biomeKey === 'bosque' ? 0.06 : 0.02)) {
+      props.push({ k: 'nenufar', x, y, v: rng.int(0, 2) });
+    } else if (rng.chance(0.012)) {
+      props.push({ k: 'roca_agua', x, y, v: rng.int(0, 1) });
+    }
   }
 
   // Haces de luz que se cuelan por grietas del techo del pozo, sobre claros abiertos.

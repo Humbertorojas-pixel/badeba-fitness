@@ -158,6 +158,40 @@ try {
     await shot('13b-equipo-visible');
   }
 
+  // Mazmorra: entrar por la primera entrada, abrir un cofre y volver a la superficie.
+  if ((await scenes()).includes('Overworld')) {
+    const settle = async () => {
+      for (let i = 0; i < 14; i++) {
+        const b = await page.evaluate(() => { const s = window.__game.scene.getScene('Overworld'); return s.busy || s.textbox.active; });
+        if (!b) break;
+        await press('z', 1, 450);
+      }
+    };
+    await settle();
+    await page.evaluate(() => { const s = window.__game.scene.getScene('Overworld'); const d = s.floor.dungeons[0]; s.tile = { ...d.front }; s.facing = 'up'; s.placePlayer(); s.player.setFrame(3); });
+    await page.evaluate(() => { const s = window.__game.scene.getScene('Overworld'); s.askEnterDungeon(s.floor.dungeons[0].id); });
+    for (let i = 0; i < 12 && !(await page.evaluate(() => !!window.__game.registry.get('run').dungeon)); i++) await press('z', 1, 500);
+    await wait(2500);
+    const inside = await page.evaluate(() => { const s = window.__game.scene.getScene('Overworld'); return { dark: !!s.floor.dark, enemies: s.enemies.length, boss: s.floor.enemies.some((e) => e.boss) }; });
+    if (!inside.dark || !inside.boss || inside.enemies < 8) throw new Error(`No se entró a la mazmorra: ${JSON.stringify(inside)}`);
+    await shot('16-mazmorra');
+    await settle();
+    await page.evaluate(() => { const s = window.__game.scene.getScene('Overworld'); s.openChest(s.floor.inspect.find((i) => i.action === 'cofre')); });
+    await wait(900);
+    await shot('17-cofre');
+    await settle();
+    const opened = await page.evaluate(() => (window.__game.registry.get('run').opened || []).length);
+    if (opened !== 1) throw new Error('El cofre no se abrió');
+    await page.evaluate(() => { window.__game.scene.getScene('Overworld').askExitDungeon(); });
+    await wait(700);
+    await press('z', 2, 400);
+    await wait(2200);
+    await settle();
+    const out = await page.evaluate(() => !window.__game.registry.get('run').dungeon);
+    if (!out) throw new Error('No se volvió a la superficie');
+    await shot('18-superficie');
+  }
+
   // Descenso: coloca al jugador junto a la escalera, la pisa y confirma "Sí".
   if ((await scenes()).includes('Overworld')) {
     const dir = await page.evaluate(() => {
