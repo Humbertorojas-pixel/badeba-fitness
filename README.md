@@ -22,10 +22,13 @@ Luego edita `server/.env` y pega tu `ANTHROPIC_API_KEY` si quieres diálogo gene
 | Tecla | Acción |
 |---|---|
 | Flechas / WASD | Mover (toque corto = girar en el sitio) |
-| Z / Espacio | Aceptar · hablar · inspeccionar |
+| Mantener X + dirección | Correr |
+| Z / Espacio | Aceptar · hablar · inspeccionar · descansar en una hoguera |
 | X / Esc / Retroceso | Volver |
-| Enter | Menú (MOCHILA, ESTADO, GUARDAR) — también acepta |
+| Enter | Menú (MAPA, MOCHILA, ESTADO, GUARDAR) — también acepta |
 | M | Silenciar |
+
+Cada piso es una **región** enorme (hasta 160×120 casillas): bosques, lagos, ríos con puentes, caminos que unen aldeas habitadas, monumentos colosales y la escalera de descenso escondida en algún lugar. El **MAPA** solo muestra lo que ya recorriste. En las aldeas hay **hogueras**: descansar en ellas cura por completo y guarda la partida. La **hierba alta** esconde encuentros, y los enemigos del piso deambulan y te persiguen si te ven.
 
 Al hablar con un NPC (o elegir HABLAR en combate) escribes libremente: **Enter** envía, **Esc** termina la conversación.
 
@@ -56,3 +59,4 @@ npm run build         # build de producción en dist/
 - [x] **Fase 3** — atributos manuales (Fuerza, Salud, Inteligencia, Maná), subida de nivel, maná como sintonización con desincronización por drenaje, loot Común/Raro/Legendario/Único con pity-timer, enemigos que usan y sueltan su ítem, pantallas de MOCHILA y ESTADO.
 - [x] **Fase 4** — guardado en IndexedDB con escritura atómica, autoguardado al entrar a cada piso y guardado manual, anillo de 3 respaldos con checksum y validación, restauración automática ante corrupción, permamuerte parcial (el perfil con pity y récords sobrevive).
 - [x] **Fase 5** — servidor local con Laya (decisiones, moderación, escalamiento, persuasión) y proxy de Claude con límites; NPC con ficha de personaje y conversación libre; negociación en combate; todo con respaldo local si la IA no está.
+- [x] **Fase 6** — pisos como regiones: terreno por ruido fractal (elevación y humedad), ríos por A*, red de caminos por árbol de expansión mínima con puentes y túneles, aldeas con casas, plaza, pozo, hoguera y aldeanos con rol, monumentos colosales por bioma (caballero arrodillado, árbol ancestral, costillar), 5 biomas con arte, música, partículas y fondo de combate propios, autotiles de caminos y agua, hierba alta que cubre al jugador, mapa con niebla de guerra, zonas con nombre, correr, encuentros en hierba y enemigos errantes.

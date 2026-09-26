@@ -41,21 +41,10 @@ export function buildMisc(scene) {
     ditheredRadial(ctx, GAME_W, GAME_H, { cx: GAME_W / 2, cy: GAME_H / 2 + 4, rx: 120, ry: 90, inner: 0.45, outer: 1.05, maxAlpha: 0.92, color: PAL.ink }));
 
   canvasTexture(scene, 'glow', 64, 48, (ctx) =>
-    ditheredRadial(ctx, 64, 48, { cx: 32, cy: 20, rx: 30, ry: 22, inner: 0.0, outer: 1.0, maxAlpha: 0.28, color: PAL.ember1, invert: true }));
+    ditheredRadial(ctx, 64, 48, { cx: 32, cy: 24, rx: 30, ry: 22, inner: 0.0, outer: 1.0, maxAlpha: 0.28, color: PAL.ember1, invert: true }));
+  canvasTexture(scene, 'glow_cold', 64, 48, (ctx) =>
+    ditheredRadial(ctx, 64, 48, { cx: 32, cy: 24, rx: 30, ry: 22, inner: 0.0, outer: 1.0, maxAlpha: 0.22, color: PAL.steel3, invert: true }));
 
-  const torchFrames = [0, 1, 2].map((f) => {
-    const b = new PixelBuffer(16, 16);
-    b.rect(6, 10, 4, 2, PAL.rust1).rect(7, 12, 2, 3, PAL.rust0).set(6, 10, PAL.rust2);
-    const flame = new PixelBuffer(16, 16);
-    const hgt = [5, 6, 4][f];
-    const sway = [0, 1, -1][f];
-    flame.ellipse(8 + sway * 0.5, 10 - hgt / 2, 2.2, hgt / 2 + 0.5, PAL.blood3);
-    flame.ellipse(8 + sway * 0.5, 10 - hgt / 2 + 1, 1.3, hgt / 2 - 0.5, PAL.ember1);
-    flame.set(8 + sway, 10 - hgt, PAL.blood3);
-    flame.set(8, 8, PAL.ember2).set(8, 9, PAL.ember2);
-    return b.paste(flame, 0, 0).outline(PAL.ink);
-  });
-  addStrip(scene, 'torch', torchFrames);
 
   const cursor = new PixelBuffer(6, 8);
   cursor.poly([[0, 0], [5, 4], [0, 8]], PAL.ink);
@@ -72,37 +61,58 @@ export function buildMisc(scene) {
   buildBattleBackdrop(scene);
 }
 
+// Fondo de combate por bioma (como Pokémon cambia el fondo según el terreno): degradado tramado
+// y siluetas propias en el horizonte.
+function paintBattleBg(ctx, bands, silhouette, floorColor, seed) {
+  const rng = createRng(seed);
+  for (let y = 0; y < 112; y++) {
+    const t = (y / 112) * (bands.length - 1);
+    const lo = Math.floor(t);
+    for (let x = 0; x < GAME_W; x++) {
+      const pick = t - lo > BAYER4[y % 4][x % 4] ? Math.min(lo + 1, bands.length - 1) : lo;
+      ctx.fillStyle = bands[pick];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  const sil = new PixelBuffer(GAME_W, 112);
+  const dark = PAL.night;
+  for (let i = 0; i < 9; i++) {
+    const x = rng.int(-10, GAME_W);
+    const base = 96;
+    if (silhouette === 'arboles') {
+      const hgt = rng.int(40, 80);
+      sil.rect(x + 8, base - hgt + 20, 5, hgt - 20, dark).ellipse(x + 10, base - hgt + 18, rng.int(10, 16), rng.int(12, 18), dark);
+    } else if (silhouette === 'lapidas') {
+      const hgt = rng.int(10, 24);
+      if (rng.chance(0.4)) sil.rect(x + 4, base - hgt - 8, 3, hgt + 8, dark).rect(x, base - hgt - 2, 11, 3, dark);
+      else sil.rect(x, base - hgt, 10, hgt, dark).ellipse(x + 5, base - hgt, 5, 4, dark);
+    } else if (silhouette === 'juncos') {
+      for (let k = 0; k < 6; k++) sil.line(x + k * 3, base, x + k * 3 + rng.int(-2, 2), base - rng.int(14, 30), dark);
+      if (rng.chance(0.4)) sil.line(x + 10, base, x + 12, base - 60, dark, 3).line(x + 12, base - 40, x + 24, base - 55, dark, 2);
+    } else if (silhouette === 'columnas') {
+      const hgt = rng.int(30, 90);
+      sil.rect(x, base - hgt, rng.int(6, 12), hgt, dark);
+    } else {
+      for (let t = 0; t <= 1; t += 0.02) sil.ellipse(x + Math.sin(t * 1.9) * 40, base - Math.sin(t * Math.PI * 0.5) * 70, 3 - t * 1.5, 2, dark);
+    }
+  }
+  sil.drawTo(ctx, 0, 0);
+  ctx.fillStyle = floorColor;
+  ctx.fillRect(0, 96, GAME_W, 16);
+  for (let x = 0; x < GAME_W; x += 2) {
+    ctx.fillStyle = (x / 2) % 2 ? PAL.dusk : floorColor;
+    ctx.fillRect(x, 95, 2, 1);
+  }
+}
+
+export function buildBattleBackdrops(scene, biomes) {
+  for (const [key, B] of Object.entries(biomes)) {
+    canvasTexture(scene, `battle_bg_${key}`, GAME_W, 112, (ctx) => paintBattleBg(ctx, B.battle.bands, B.battle.silhouette, B.battle.floor, key.length * 977));
+  }
+}
+
 function buildBattleBackdrop(scene) {
-  canvasTexture(scene, 'battle_bg', GAME_W, 112, (ctx) => {
-    const rng = createRng(90210);
-    const bands = [PAL.ink, PAL.night, PAL.shade, PAL.dusk];
-    for (let y = 0; y < 112; y++) {
-      const t = (y / 112) * (bands.length - 1);
-      const lo = Math.floor(t);
-      for (let x = 0; x < GAME_W; x++) {
-        const pick = t - lo > BAYER4[y % 4][x % 4] ? Math.min(lo + 1, bands.length - 1) : lo;
-        ctx.fillStyle = bands[pick];
-        ctx.fillRect(x, y, 1, 1);
-      }
-    }
-    for (let i = 0; i < 7; i++) {
-      const x = rng.int(0, GAME_W - 12);
-      const w = rng.int(6, 12);
-      const top = rng.int(8, 40);
-      ctx.fillStyle = PAL.night;
-      ctx.fillRect(x, top, w, 112 - top);
-      ctx.fillStyle = PAL.shade;
-      ctx.fillRect(x, top, 1, 112 - top);
-      ctx.fillStyle = PAL.ink;
-      ctx.fillRect(x + w - 1, top, 1, 112 - top);
-    }
-    ctx.fillStyle = PAL.stone0;
-    ctx.fillRect(0, 96, GAME_W, 16);
-    for (let x = 0; x < GAME_W; x += 2) {
-      ctx.fillStyle = (x / 2) % 2 ? PAL.dusk : PAL.stone0;
-      ctx.fillRect(x, 95, 2, 1);
-    }
-  });
+  canvasTexture(scene, 'battle_bg', GAME_W, 112, (ctx) => paintBattleBg(ctx, [PAL.ink, PAL.night, PAL.shade, PAL.dusk], 'columnas', PAL.stone0, 90210));
 
   const platform = (w, h) => {
     const b = new PixelBuffer(w, h);

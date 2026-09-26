@@ -74,6 +74,7 @@ export function createControls(scene) {
     cancel: () => take('cancel'),
     start: () => take('start'),
     confirmHeld: () => [...held].some((k) => actionsOf(k).includes('confirm')),
+    cancelHeld: () => [...held].some((k) => actionsOf(k).includes('cancel')),
     justDir: () => DIRS.find((d) => take(d)) || null,
     // Durante la escritura libre el teclado pertenece al campo de texto.
     suspend: () => { suspended = true; blur(); },

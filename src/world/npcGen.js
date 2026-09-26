@@ -39,6 +39,49 @@ export const NPC_ROLES = {
   },
 };
 
+// Aldeanos: gente que sobrevive en los asentamientos de cada región. Nunca se vuelven hostiles.
+export const VILLAGER_ROLES = {
+  herrera: {
+    title: 'herrera de la aldea', palette: 'mercenario', names: ['Brunhild', 'Ottilia', 'Greta'],
+    personality: ['ruda y directa, huele a hollín; respeta a quien carga buen acero', 'callada, mide a los viajeros por sus manos'],
+    secret: ['forja cadenas para algo que vive bajo la aldea', 'su martillo perteneció a un caballero del eclipse'],
+  },
+  anciano: {
+    title: 'anciano de la aldea', palette: 'peregrina', names: ['Abuelo Tadeo', 'Viejo Ramiro', 'Anciana Petra'],
+    personality: ['sabio y cansado; cuenta historias de pisos que ya no existen', 'desconfía de los que bajan: "nadie baja por buenas razones"'],
+    secret: ['recuerda haber nacido en un piso más profundo', 'sabe que la aldea se muda sola cuando nadie mira'],
+  },
+  vigia: {
+    title: 'vigía de la aldea', palette: 'mercenario', names: ['Hugo', 'Leandra', 'Cástor'],
+    personality: ['nervioso, siempre mirando hacia la oscuridad del bosque', 'orgulloso de sus guardias; habla de cada criatura que ha visto'],
+    secret: ['dejó entrar a algo una noche y no se lo ha dicho a nadie', 'ya no duerme: teme que la hoguera se apague'],
+  },
+  posadera: {
+    title: 'posadera', palette: 'nino', names: ['Marta', 'Remedios', 'Clotilde'],
+    personality: ['cálida y habladora; conoce todos los rumores del piso', 'práctica y maternal, regaña a los viajeros heridos'],
+    secret: ['sirve sopa a huéspedes que nadie más ve', 'guarda la llave de una puerta que no lleva a ningún lugar'],
+  },
+};
+
+export function generateVillager(seed, depth, village) {
+  const rng = createRng(seed);
+  const roleKey = rng.pick(Object.keys(VILLAGER_ROLES));
+  const r = VILLAGER_ROLES[roleKey];
+  return {
+    role: r.title,
+    roleKey,
+    palette: r.palette,
+    canTurnHostile: false,
+    name: rng.pick(r.names),
+    personality: rng.pick(r.personality),
+    secret: rng.pick(r.secret),
+    disposition: rng.pick(['amable', 'recelosa', 'cansada']),
+    knowledge: `vive en ${village}; conoce los caminos cercanos, el bosque y las criaturas de este piso`,
+    home: village,
+    level: depth,
+  };
+}
+
 export function generateNpc(seed, depth) {
   const rng = createRng(seed);
   const roleKey = rng.pick(Object.keys(NPC_ROLES));

@@ -4,7 +4,7 @@ import { createCombatant, resolveTurn, computeDamage, fleeChance } from '../src/
 import { generateEnemyTemplate } from '../src/world/enemyGen.js';
 import { BIOMES } from '../src/world/biomes.js';
 
-const tpl = (seed) => generateEnemyTemplate({ seed, depth: 1, biome: BIOMES.catacumbas });
+const tpl = (seed) => generateEnemyTemplate({ seed, depth: 1, biome: BIOMES.necropolis });
 import { MOVES } from '../src/data/moves.js';
 
 const hero = () => createCombatant({ name: 'Tú', maxHp: 40, str: 10, def: 6, spd: 8, moves: ['tajo', 'embestida', 'guardia'] });

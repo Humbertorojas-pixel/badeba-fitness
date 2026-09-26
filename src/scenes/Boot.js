@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { registerFonts } from '../gfx/font.js';
-import { buildMisc } from '../gfx/misc.js';
+import { buildMisc, buildBattleBackdrops } from '../gfx/misc.js';
+import { BIOMES } from '../world/biomes.js';
 import { buildPlayerOverworld, buildPlayerBack, buildNpcFrames, NPC_PALETTES } from '../gfx/playerSprites.js';
 import { addStrip } from '../gfx/pixelBuffer.js';
 
@@ -13,6 +14,7 @@ export class Boot extends Phaser.Scene {
   create() {
     registerFonts(this);
     buildMisc(this);
+    buildBattleBackdrops(this, BIOMES);
     addStrip(this, 'player', buildPlayerOverworld());
     addStrip(this, 'player_back', [buildPlayerBack()]);
     for (const key of Object.keys(NPC_PALETTES)) addStrip(this, `npc_${key}`, buildNpcFrames(key));
@@ -26,7 +28,6 @@ export class Boot extends Phaser.Scene {
         repeat: -1,
       });
     }
-    this.anims.create({ key: 'torch_burn', frames: this.anims.generateFrameNumbers('torch', { frames: [0, 1, 0, 2] }), frameRate: 7, repeat: -1 });
 
     this.scene.start('Title');
   }

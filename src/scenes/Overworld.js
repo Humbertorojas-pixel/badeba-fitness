@@ -1,5 +1,5 @@
+import { TILE, WALK_MS, RUN_MS, TURN_GRACE_MS, DEPTH, GAME_W } from '../constants.js';
 import Phaser from 'phaser';
-import { TILE, WALK_MS, TURN_GRACE_MS, DEPTH, GAME_W } from '../constants.js';
 import { createControls } from '../ui/controls.js';
 import { TextBox } from '../ui/TextBox.js';
 import { Menu } from '../ui/Menu.js';
@@ -10,10 +10,10 @@ import { ensureMonsterTextures } from '../gfx/monsterTextures.js';
 import { DIR_FRAME_BASE } from '../gfx/playerSprites.js';
 import { audio } from '../audio/audio.js';
 import { getRun } from '../core/state.js';
-import { computeTiles, isBlocked } from '../world/floor.js';
+import { isBlocked } from '../world/floor.js';
 import { generateFloor } from '../world/generate.js';
 import { BIOMES } from '../world/biomes.js';
-import { buildTileset } from '../gfx/tiles.js';
+import { buildRegionView } from '../world/regionView.js';
 import { createRng, hashSeed } from '../core/rng.js';
 import { rollEnemyLoot } from '../core/loot.js';
 import { derive } from '../core/character.js';
@@ -28,6 +28,9 @@ const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const OPPOSITE = { up: 'down', down: 'up', left: 'right', right: 'left' };
 const SIGHT = 3;
 const MAX_TURNS = 25;
+const REVEAL = 7;
+const ROAM_RADIUS = 4;
+const ENCOUNTER_RATE = 1 / 10;
 const HOSTILE_BIOME = { archetypes: { humanoid: 1 }, ramps: ['steel', 'rust', 'flesh'] };
 
 export class Overworld extends Phaser.Scene {
@@ -41,43 +44,32 @@ export class Overworld extends Phaser.Scene {
     if (this.run.purgeTextures) {
       this.run.purgeTextures = false;
       for (const key of this.textures.getTextureKeys()) {
-        if (key.startsWith('mon_') || key.startsWith('tiles_f')) this.textures.remove(key);
+        if (!key.startsWith('mon_') && !key.startsWith('tiles_f') && !key.startsWith('p_')) continue;
+        // Las animaciones son globales: si apuntan a una textura borrada, fallan en el piso siguiente.
+        if (this.anims.exists(`${key}_anim`)) this.anims.remove(`${key}_anim`);
+        this.textures.remove(key);
       }
     }
     const freshFloor = !this.run.floorData;
     if (freshFloor) this.buildFloorData();
     const floor = this.run.floorData;
     this.floor = floor;
-
-    const tilesKey = `tiles_f${this.run.floor}`;
-    if (!this.textures.exists(tilesKey)) {
-      buildTileset(this, BIOMES[floor.biome].tiles, floor.fragment ? BIOMES[floor.fragment.biome].tiles : null, tilesKey);
-    }
-    const map = this.make.tilemap({ data: computeTiles(floor), tileWidth: TILE, tileHeight: TILE });
-    const tileset = map.addTilesetImage(tilesKey, tilesKey, TILE, TILE, 0, 0);
-    map.createLayer(0, tileset, 0, 0).setDepth(DEPTH.floor);
-
-    for (const t of floor.torches) {
-      this.add.image(t.x * TILE + 8, (t.y + 1) * TILE + 2, 'glow').setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.decal);
-      this.add.sprite(t.x * TILE, t.y * TILE, 'torch').setOrigin(0, 0).setDepth(DEPTH.decal).play({ key: 'torch_burn', startFrame: (t.x + t.y) % 3 });
-    }
+    this.view = buildRegionView(this, floor, this.run.floor);
 
     this.enemies = floor.enemies
       .filter((e) => !this.run.defeated.includes(e.id))
       .map((e) => {
         const tex = ensureMonsterTextures(this, String(e.template.seed), e.template);
-        const shadow = this.add.image(e.x * TILE + 8, e.y * TILE + 15, 'shadow').setDepth(DEPTH.entity - 1);
-        const sprite = this.add.image(e.x * TILE + 8, e.y * TILE + 15, tex.small).setOrigin(0.5, 1);
-        sprite.setDepth(DEPTH.entity + e.y);
-        this.tweens.add({ targets: sprite, y: sprite.y - 1, duration: 500, yoyo: true, repeat: -1, ease: 'Stepped', delay: (e.x * 97) % 400 });
-        return { ...e, sprite, shadow };
+        const shadow = this.add.image(e.x * TILE + 8, e.y * TILE + 15, 'shadow').setDepth(DEPTH.entity + e.y + 0.3);
+        const sprite = this.add.image(e.x * TILE + 8, e.y * TILE + 15, tex.small).setOrigin(0.5, 1).setDepth(DEPTH.entity + e.y + 0.5);
+        return { data: e, id: e.id, x: e.x, y: e.y, template: e.template, sprite, shadow, busy: false };
       });
 
-    this.npcs = (floor.npcs || [])
+    this.npcs = floor.npcs
       .filter((n) => !this.run.defeated.includes(n.id))
       .map((n) => {
         const sprite = this.add.sprite(n.x * TILE + 8, n.y * TILE + TILE, `npc_${n.sheet.palette}`, DIR_FRAME_BASE.down).setOrigin(0.5, 1);
-        sprite.setDepth(DEPTH.entity + n.y);
+        sprite.setDepth(DEPTH.entity + n.y + 0.5);
         return { data: n, sprite };
       });
 
@@ -91,32 +83,38 @@ export class Overworld extends Phaser.Scene {
     cam.setBounds(0, 0, floor.w * TILE, floor.h * TILE);
     cam.startFollow(this.player, true);
     cam.setRoundPixels(true);
+    this.view.culler.update(0, true);
 
     this.add.image(0, 0, 'vignette').setOrigin(0, 0).setScrollFactor(0).setDepth(DEPTH.overlay);
     this.textbox = new TextBox(this, this.controls);
     this.textInput = new TextInput(this, this.controls);
     this.dialogRng = createRng((this.run.seed ^ Date.now()) >>> 0);
+    this.encounterRng = createRng((this.run.seed ^ (Date.now() * 31)) >>> 0);
     if (!aiStatus().checked || aiStatus().laya === 'loading') refreshAiStatus();
     this.busy = false;
     this.moving = false;
     this.turnLock = 0;
     this.lastBump = 0;
+    this.reveal();
+    this.view.updateGrass(this.tile, this.player.depth);
+    this.zone = this.zoneAt(this.tile);
 
     audio.playMusic(this.musicHere());
     cam.fadeIn(350);
     if (this.run.locationShown !== this.run.floor) {
       this.run.locationShown = this.run.floor;
-      this.showLocation();
+      this.showLocation(`Piso ${this.run.floor} · ${floor.biomeName}`);
     }
     if (!this.run.introShown) {
       this.run.introShown = true;
-      this.dialog('Despiertas sobre piedra húmeda. El aire huele a hierro y a cera quemada.');
+      this.dialog('Despiertas bajo un cielo de roca. Un bosque entero crece aquí abajo, en la oscuridad del pozo.');
     } else if (this.run.pendingMessage) {
       const msg = this.run.pendingMessage;
       this.run.pendingMessage = null;
       this.dialog(msg);
     }
     if (freshFloor) this.autosave();
+    this.time.addEvent({ delay: 650, loop: true, callback: () => this.roamEnemies() });
     const onResume = () => { this.busy = false; };
     this.events.on('resume', onResume);
     this.events.once('shutdown', () => this.events.off('resume', onResume));
@@ -131,14 +129,38 @@ export class Overworld extends Phaser.Scene {
     for (const e of floor.enemies) e.template.loot = rollEnemyLoot(rng, pity, this.run.floor, intelligence);
     this.run.floorData = floor;
     this.run.pos = null;
+    this.run.stepsSinceBattle = 0;
+    this.run.grassBattles = 0;
   }
 
-  async autosave() {
+  // Niebla de guerra: lo explorado queda en el MAPA.
+  reveal() {
+    const { w, h, seen } = this.floor;
+    for (let dy = -REVEAL; dy <= REVEAL; dy++) {
+      for (let dx = -REVEAL; dx <= REVEAL; dx++) {
+        if (dx * dx + dy * dy > REVEAL * REVEAL) continue;
+        const x = this.tile.x + dx;
+        const y = this.tile.y + dy;
+        if (x >= 0 && y >= 0 && x < w && y < h) seen[y * w + x] = 1;
+      }
+    }
+  }
+
+  zoneAt(t) {
+    let best = null;
+    for (const z of this.floor.zones) {
+      const d = Math.hypot(z.x - t.x, z.y - t.y);
+      if (d <= z.r && (!best || z.r < best.r)) best = z;
+    }
+    return best;
+  }
+
+  async autosave(label = 'Autoguardado') {
     const profile = getProfile(this);
     profile.deepest = Math.max(profile.deepest, this.run.floor);
     try {
       await getStore().saveRun(this.run, profile, 'auto');
-      this.toast('Autoguardado');
+      this.toast(label);
     } catch (err) {
       console.warn(err);
       this.toast('No se pudo guardar');
@@ -147,12 +169,13 @@ export class Overworld extends Phaser.Scene {
 
   toast(text) {
     const w = measure(text) + 20;
-    const c = this.add.container(GAME_W - w - 4, 160).setScrollFactor(0).setDepth(DEPTH.ui);
+    // Arriba a la derecha: no tapa la caja de diálogo ni el cartel de zona (arriba a la izquierda).
+    const c = this.add.container(GAME_W - w - 4, -26).setScrollFactor(0).setDepth(DEPTH.ui);
     c.add(drawBox(this.add.graphics(), 0, 0, w, 24));
     c.add(pixelText(this, 10, 6, text, 'box'));
     this.tweens.chain({
       targets: c,
-      tweens: [{ y: 132, duration: 200, ease: 'Quad.out', delay: 400 }, { y: 160, duration: 200, ease: 'Quad.in', delay: 1200 }],
+      tweens: [{ y: 30, duration: 200, ease: 'Quad.out', delay: 400 }, { y: -26, duration: 200, ease: 'Quad.in', delay: 1400 }],
       onComplete: () => c.destroy(),
     });
   }
@@ -185,19 +208,25 @@ export class Overworld extends Phaser.Scene {
     this.player.setFrame(DIR_FRAME_BASE[this.facing]);
     audio.sfx('confirm');
     const points = this.run.player.points;
-    const menu = new Menu(this, this.controls, {
-      x: 158, y: 4, w: 78, h: 76, rowH: 16, padY: 10,
-      items: [{ label: 'MOCHILA' }, { label: points ? 'ESTADO +' : 'ESTADO', style: points ? 'unique' : 'box' }, { label: 'GUARDAR' }, { label: 'CERRAR' }],
-    });
+    const items = [
+      { label: 'MAPA', scene: 'MapView' },
+      { label: 'MOCHILA', scene: 'Bag' },
+      { label: points ? 'ESTADO +' : 'ESTADO', style: points ? 'unique' : 'box', scene: 'Status' },
+      { label: 'GUARDAR' },
+      { label: 'CERRAR' },
+    ];
+    const menu = new Menu(this, this.controls, { x: 158, y: 4, w: 78, h: 12 + items.length * 16, rowH: 16, padY: 10, items });
     const choice = await menu.open(this.pauseIndex || 0);
     menu.destroy();
     this.pauseIndex = Math.max(0, choice);
-    if (choice === 0 || choice === 1) {
-      this.scene.launch(choice === 0 ? 'Bag' : 'Status');
+    const item = items[choice];
+    if (item?.scene) {
+      this.run.pos = { ...this.tile };
+      this.scene.launch(item.scene);
       this.scene.pause();
       return;
     }
-    if (choice === 2) {
+    if (item?.label === 'GUARDAR') {
       this.manualSave();
       return;
     }
@@ -215,21 +244,17 @@ export class Overworld extends Phaser.Scene {
 
   placePlayer() {
     this.player.setPosition(this.tile.x * TILE + 8, this.tile.y * TILE + TILE);
-    this.player.setDepth(DEPTH.entity + this.tile.y);
+    this.player.setDepth(DEPTH.entity + this.tile.y + 0.5);
   }
 
-  showLocation() {
-    const label = `Piso ${this.run.floor} · ${this.floor.biomeName}`;
+  showLocation(label) {
     const w = measure(label) + 20;
     const c = this.add.container(4, -26).setScrollFactor(0).setDepth(DEPTH.ui);
     c.add(drawBox(this.add.graphics(), 0, 0, w, 24));
     c.add(pixelText(this, 10, 6, label, 'box'));
     this.tweens.chain({
       targets: c,
-      tweens: [
-        { y: 4, duration: 250, ease: 'Quad.out' },
-        { y: -26, duration: 250, ease: 'Quad.in', delay: 1800 },
-      ],
+      tweens: [{ y: 4, duration: 250, ease: 'Quad.out' }, { y: -26, duration: 250, ease: 'Quad.in', delay: 1800 }],
       onComplete: () => c.destroy(),
     });
   }
@@ -245,7 +270,12 @@ export class Overworld extends Phaser.Scene {
     return this.enemies.find((e) => e.x === x && e.y === y);
   }
 
-  update(_time, delta) {
+  npcAt(x, y) {
+    return this.npcs.find((n) => n.data.x === x && n.data.y === y);
+  }
+
+  update(time, delta) {
+    this.view.update(time, delta);
     if (this.busy || this.moving) return;
     if (this.turnLock > 0) this.turnLock -= delta;
 
@@ -254,7 +284,6 @@ export class Overworld extends Phaser.Scene {
       this.openPauseMenu();
       return;
     }
-
     if (this.controls.confirm()) {
       this.interact();
       return;
@@ -285,16 +314,31 @@ export class Overworld extends Phaser.Scene {
       this.startBattle(enemy);
       return;
     }
-    const npc = this.npcs.find((n) => n.data.x === x && n.data.y === y);
+    const npc = this.npcAt(x, y);
     if (npc) {
       this.talkTo(npc);
       return;
     }
     const spot = this.floor.inspect.find((i) => i.x === x && i.y === y);
-    if (spot) {
-      audio.sfx('inspect');
-      this.dialog(spot.text);
-    }
+    if (!spot) return;
+    audio.sfx('inspect');
+    if (spot.action === 'hoguera') this.rest();
+    else this.dialog(spot.text);
+  }
+
+  // Hoguera de aldea: descanso completo y guardado (el punto seguro de cada región).
+  async rest() {
+    this.busy = true;
+    const p = this.run.player;
+    p.hp = derive(p).maxHp;
+    audio.sfx('heal');
+    this.cameras.main.flash(400, 194, 141, 58);
+    await this.textbox.say('Descansas junto a la hoguera. El calor cierra tus heridas.');
+    this.textbox.hide();
+    this.run.pos = { ...this.tile };
+    this.run.facing = this.facing;
+    await this.autosave('La hoguera guarda tu paso');
+    this.busy = false;
   }
 
   stairsHint(from) {
@@ -314,6 +358,8 @@ export class Overworld extends Phaser.Scene {
     return {
       piso: this.run.floor,
       bioma: this.floor.biomeName,
+      lugar: this.zoneAt(npc)?.name || 'tierras salvajes',
+      lugares_cercanos: this.floor.zones.map((z) => z.name),
       escalera: this.stairsHint(npc),
       criaturas: this.enemies.length,
       fragmento: !!this.floor.fragment,
@@ -410,7 +456,7 @@ export class Overworld extends Phaser.Scene {
       this.startBattle(enemy);
       return;
     }
-    if (isBlocked(this.floor, nx, ny)) {
+    if (isBlocked(this.floor, nx, ny) || this.npcAt(nx, ny) || this.enemies.some((e) => e.busy && e.tx === nx && e.ty === ny)) {
       this.player.anims.play(`walk_${dir}`, true);
       if (this.time.now - this.lastBump > 320) {
         audio.sfx('bump');
@@ -418,16 +464,21 @@ export class Overworld extends Phaser.Scene {
       }
       return;
     }
+    // Correr: mantener X (el botón B de Pokémon con las zapatillas).
+    const running = this.controls.cancelHeld();
     this.moving = true;
+    this.dest = { x: nx, y: ny };
     this.player.anims.play(`walk_${dir}`, true);
-    this.player.setDepth(DEPTH.entity + Math.max(this.tile.y, ny));
+    this.player.anims.timeScale = running ? 1.8 : 1;
+    this.player.setDepth(DEPTH.entity + Math.max(this.tile.y, ny) + 0.5);
     this.tweens.add({
       targets: this.player,
       x: nx * TILE + 8,
       y: ny * TILE + TILE,
-      duration: WALK_MS,
+      duration: running ? RUN_MS : WALK_MS,
       onComplete: () => {
         this.tile = { x: nx, y: ny };
+        this.dest = null;
         this.placePlayer();
         this.moving = false;
         this.afterStep();
@@ -437,6 +488,14 @@ export class Overworld extends Phaser.Scene {
 
   afterStep() {
     audio.playMusic(this.musicHere());
+    this.reveal();
+    const inGrass = this.view.updateGrass(this.tile, this.player.depth);
+    this.run.stepsSinceBattle = (this.run.stepsSinceBattle || 0) + 1;
+    const zone = this.zoneAt(this.tile);
+    if (zone !== this.zone) {
+      this.zone = zone;
+      if (zone && zone.kind !== 'fragmento') this.showLocation(zone.name);
+    }
     if (this.inFragment() && this.run.fragmentSeen !== this.run.floor) {
       this.run.fragmentSeen = this.run.floor;
       this.cameras.main.shake(300, 0.004);
@@ -444,15 +503,71 @@ export class Overworld extends Phaser.Scene {
       return;
     }
     const { stairs } = this.floor;
-    if (stairs && this.tile.x === stairs.x && this.tile.y === stairs.y) {
+    if (this.tile.x === stairs.x && this.tile.y === stairs.y) {
       this.askDescend();
       return;
     }
     // Tras huir, el enemigo no vuelve a detectarte hasta que salgas de su línea de visión.
     const grace = this.run.sightGrace;
     if (grace && !this.enemies.some((e) => e.id === grace && this.inSight(e))) this.run.sightGrace = null;
-    const spotter = this.enemies.find((e) => e.id !== this.run.sightGrace && this.inSight(e));
-    if (spotter) this.spotted(spotter);
+    const spotter = this.enemies.find((e) => !e.busy && e.id !== this.run.sightGrace && this.inSight(e));
+    if (spotter) {
+      this.spotted(spotter);
+      return;
+    }
+    if (inGrass && this.run.stepsSinceBattle > 4 && this.encounterRng.next() < ENCOUNTER_RATE) this.grassEncounter();
+  }
+
+  // Encuentro en la hierba alta: algo salta de entre las matas, como en Pokémon.
+  grassEncounter() {
+    this.busy = true;
+    const n = this.run.grassBattles || 0;
+    this.run.grassBattles = n + 1;
+    const template = generateEnemyTemplate({ seed: hashSeed(this.floor.seed, `g${n}`), depth: this.run.floor, biome: BIOMES[this.floor.biome] });
+    const rng = createRng(hashSeed(this.floor.seed, `gl${n}`));
+    template.loot = rng.chance(0.5) ? rollEnemyLoot(rng, getProfile(this).pity, this.run.floor, derive(this.run.player).int) : null;
+    const mark = pixelText(this, this.player.x - 1, this.player.y - 34, '!', 'blood').setDepth(DEPTH.ui);
+    audio.sfx('encounter');
+    this.time.delayedCall(450, () => {
+      mark.destroy();
+      this.startBattle({ id: null, template });
+    });
+  }
+
+  // Las criaturas deambulan cerca de su guarida; al moverse también pueden verte.
+  roamEnemies() {
+    if (this.busy) return;
+    for (const e of this.enemies) {
+      if (e.busy || Math.abs(e.x - this.tile.x) + Math.abs(e.y - this.tile.y) > 16 || this.dialogRng.next() > 0.35) continue;
+      const [dx, dy] = Phaser.Utils.Array.GetRandom(Object.values(DIRS));
+      const tx = e.x + dx;
+      const ty = e.y + dy;
+      const home = e.data.home || e.data;
+      if (Math.abs(tx - home.x) > ROAM_RADIUS || Math.abs(ty - home.y) > ROAM_RADIUS) continue;
+      if (isBlocked(this.floor, tx, ty) || this.enemyAt(tx, ty) || this.npcAt(tx, ty)) continue;
+      if ((tx === this.tile.x && ty === this.tile.y) || (this.dest && tx === this.dest.x && ty === this.dest.y)) continue;
+      if (this.floor.fragment?.cells.has(ty * this.floor.w + tx) !== this.floor.fragment?.cells.has(e.y * this.floor.w + e.x)) continue;
+      e.busy = true;
+      e.tx = tx;
+      e.ty = ty;
+      e.sprite.setDepth(DEPTH.entity + Math.max(e.y, ty) + 0.5);
+      this.tweens.add({
+        targets: [e.sprite, e.shadow],
+        x: tx * TILE + 8,
+        y: ty * TILE + 15,
+        duration: 320,
+        onComplete: () => {
+          e.x = tx;
+          e.y = ty;
+          e.data.x = tx;
+          e.data.y = ty;
+          e.busy = false;
+          e.sprite.setDepth(DEPTH.entity + ty + 0.5);
+          e.shadow.setDepth(DEPTH.entity + ty + 0.3);
+          if (!this.busy && !this.moving && e.id !== this.run.sightGrace && this.inSight(e)) this.spotted(e);
+        },
+      });
+    }
   }
 
   inSight(e) {
@@ -464,7 +579,9 @@ export class Overworld extends Phaser.Scene {
     const sx = Math.sign(dx);
     const sy = Math.sign(dy);
     for (let i = 1; i < dist; i++) {
-      if (isBlocked(this.floor, e.x + sx * i, e.y + sy * i) || this.enemyAt(e.x + sx * i, e.y + sy * i)) return false;
+      const x = e.x + sx * i;
+      const y = e.y + sy * i;
+      if (isBlocked(this.floor, x, y) || this.enemyAt(x, y) || this.npcAt(x, y)) return false;
     }
     return true;
   }
@@ -472,6 +589,7 @@ export class Overworld extends Phaser.Scene {
   // Como los entrenadores de Pokémon: "!" sobre el enemigo, se acerca y comienza el combate.
   spotted(enemy) {
     this.busy = true;
+    enemy.busy = true;
     this.player.anims.stop();
     this.player.setFrame(DIR_FRAME_BASE[this.facing]);
     audio.sfx('encounter');
@@ -491,9 +609,8 @@ export class Overworld extends Phaser.Scene {
         onComplete: () => {
           enemy.x = toX;
           enemy.y = toY;
-          const stored = this.floor.enemies.find((e) => e.id === enemy.id);
-          stored.x = toX;
-          stored.y = toY;
+          enemy.data.x = toX;
+          enemy.data.y = toY;
           const face = dx > 0 ? 'left' : dx < 0 ? 'right' : dy > 0 ? 'up' : 'down';
           this.facing = face;
           this.player.setFrame(DIR_FRAME_BASE[face]);
@@ -505,7 +622,7 @@ export class Overworld extends Phaser.Scene {
 
   async askDescend() {
     this.busy = true;
-    await this.textbox.say('Una escalera se hunde en la oscuridad. No hay vuelta atrás. ¿Descender?', { hold: true });
+    await this.textbox.say('Escalones hacia el siguiente piso. No hay vuelta atrás. ¿Descender?', { hold: true });
     const menu = new Menu(this, this.controls, { x: GAME_W - 64, y: 64, w: 60, h: 46, items: [{ label: 'Sí' }, { label: 'No' }] });
     const choice = await menu.open(1);
     menu.destroy();
@@ -537,6 +654,7 @@ export class Overworld extends Phaser.Scene {
     this.busy = true;
     this.run.pos = { ...this.tile };
     this.run.facing = this.facing;
+    this.run.stepsSinceBattle = 0;
     this.player.anims.stop();
     audio.stopMusic();
     audio.sfx('encounter');

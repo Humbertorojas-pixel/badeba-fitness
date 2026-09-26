@@ -60,7 +60,7 @@ export function derive(p) {
   return {
     maxHp: 20 + a.salud * 4 + mods.hp,
     str: a.fuerza + mods.atk,
-    def: 4 + Math.floor(p.level / 2) + mods.def,
+    def: 6 + Math.floor(p.level / 2) + mods.def,
     spd: 8 + mods.spd,
     int: a.inteligencia + mods.int,
     accBonus: Math.min(0.1, Math.max(0, (a.fuerza - 10) * 0.005)) + mods.acc,

@@ -47,7 +47,8 @@ export function generateEnemyTemplate({ seed, depth, biome, foreign = false }) {
   const [noun, gender] = rng.pick(def.nouns);
   const trait = RAMP_TRAITS[ramp];
   const adj = trait.adj[gender === 'f' ? 1 : 0];
-  const scale = 1 + 0.15 * (depth - 1) + (foreign ? 0.35 : 0);
+  // Curva de dificultad: el primer piso es aprendizaje; cada piso suma un 14 %.
+  const scale = 0.7 + 0.14 * (depth - 1) + (foreign ? 0.35 : 0);
   const stat = (k) => Math.max(1, Math.round((def.base[k] + (trait.mod[k] || 0)) * scale));
   return {
     name: foreign ? `${noun} ${gender === 'f' ? 'ajena' : 'ajeno'}` : `${noun} ${adj}`,

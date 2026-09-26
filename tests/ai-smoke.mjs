@@ -49,23 +49,25 @@ try {
   await wait(1500);
   await press('Enter', 1, 900);
   await press('z', 1, 1500);
-  await press('z', 3, 450);
-  await wait(2200);
+  for (let i = 0; i < 25 && (await page.evaluate(() => window.__game.scene.getScene('Overworld')?.busy !== false)); i++) await press('z', 1, 500);
+  await wait(600);
 
   // Conversación libre con el NPC del primer piso.
   if (!(await approach('npc'))) throw new Error('No hay acceso al NPC');
   await press('z', 1, 1800);
   await shot('01-saludo');
-  if (!(await textShown()).includes('voz del pozo')) throw new Error(`Saludo no vino de Claude: ${await textShown()}`);
-  await press('z', 1, 600);
+  const greeting = await page.evaluate(() => window.__game.scene.getScene('Overworld').npcs[0].data.history.at(-1)?.text || '');
+  if (!greeting.includes('voz del pozo')) throw new Error(`Saludo no vino de Claude: ${greeting}`);
+  const textActive = () => page.evaluate(() => window.__game.scene.getScene('Overworld').textInput.active);
+  for (let i = 0; i < 6 && !(await textActive()); i++) await press('z', 1, 600);
   await page.keyboard.type('¿Dónde está la escalera, señora?');
   await wait(300);
   await shot('02-escribiendo');
-  await press('Enter', 1, 1800);
+  await press('Enter', 1, 2200);
   await shot('03-respuesta');
   const c1 = await calls();
   if (c1.moderate < 1 || c1.claude < 2) throw new Error(`Llamadas insuficientes: ${JSON.stringify(c1)}`);
-  await press('z', 1, 600);
+  for (let i = 0; i < 6 && !(await textActive()); i++) await press('z', 1, 600);
   await press('Escape', 1, 800);
   const busy = await page.evaluate(() => window.__game.scene.getScene('Overworld').busy);
   if (busy) throw new Error('La conversación no terminó al pulsar Esc');

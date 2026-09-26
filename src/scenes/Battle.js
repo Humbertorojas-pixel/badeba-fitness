@@ -93,7 +93,8 @@ export class Battle extends Phaser.Scene {
     this.enemy = createEnemyCombatant(template);
     this.player = this.buildPlayerCombatant();
 
-    this.add.image(0, 0, 'battle_bg').setOrigin(0, 0);
+    const bg = `battle_bg_${this.run.floorData?.biome}`;
+    this.add.image(0, 0, this.textures.exists(bg) ? bg : 'battle_bg').setOrigin(0, 0);
     const tex = ensureMonsterTextures(this, String(template.seed), template);
     this.enemyGroup = this.add.container(0, 0);
     this.enemyGroup.add(this.add.image(ENEMY_BASE.x, ENEMY_BASE.y - 4, 'platform_enemy'));
@@ -390,13 +391,15 @@ export class Battle extends Phaser.Scene {
       run.player.hp = this.player.hp;
       run.player.manaDrain = 0;
     }
+    // Los encuentros en la hierba no tienen id: no hay nada que retirar del mapa.
+    const retire = () => { if (this.enemyId) run.defeated.push(this.enemyId); };
     if (outcome === 'win') {
       audio.playMusic('victoria');
-      run.defeated.push(this.enemyId);
+      retire();
       await this.say(`Has sobrevivido a ${this.template.article ? `${this.template.article.toLowerCase()} ` : ''}${this.enemy.name}.`);
       await this.rewards();
     } else if (outcome === 'spared') {
-      run.defeated.push(this.enemyId);
+      retire();
       audio.sfx('heal');
       await new Promise((r) => this.tweens.add({ targets: this.enemySprite, alpha: 0, duration: 600, onComplete: r }));
       const xp = Math.ceil(xpReward(this.template) / 2);
@@ -404,7 +407,7 @@ export class Battle extends Phaser.Scene {
       const levels = gainXp(run.player, xp);
       if (levels) await this.say(`¡${run.player.name} sube al nivel ${run.player.level}! (+${levels * 3} puntos de atributo)`);
     } else if (outcome === 'enemyFled') {
-      run.defeated.push(this.enemyId);
+      retire();
     } else if (outcome === 'fled') {
       audio.sfx('flee');
       run.sightGrace = this.enemyId;

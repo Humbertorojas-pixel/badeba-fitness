@@ -17,3 +17,18 @@ export const FRAGMENT_LORE = [
   'El aire sabe a ceniza de otro cielo. Por un instante oyes campanas que nunca sonaron.',
   'Una sala imposible: la sangre del suelo cae hacia arriba, gota a gota.',
 ];
+
+export const HOUSE_LORE = [
+  'La puerta está atrancada. Dentro, alguien reza en voz baja.',
+  'Por la rendija se ve una mesa servida para gente que no ha llegado.',
+  'Una voz desde dentro: «Hoy no abrimos. Hoy no.»',
+  'La puerta cede un poco. Huele a pan y a ceniza. Mejor no entrar.',
+  'Hay marcas de garras en la madera, del lado de dentro.',
+  'Una cuna se mece sola junto a la ventana.',
+];
+
+export const LANDMARK_LORE = {
+  coloso: 'Un caballero de piedra, arrodillado, sin cabeza. Su espada, clavada en el suelo, es más alta que diez hombres. Nadie recuerda qué juró proteger.',
+  arbol_ancestral: 'Un árbol más viejo que el pozo. Sus raíces atraviesan pisos enteros; dicen que en su hueco duerme quien lo plantó.',
+  costillar: 'Las costillas de un titán forman un túnel. Caminas por dentro de algo que murió antes de que existiera el primer piso.',
+};

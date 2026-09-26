@@ -3,7 +3,7 @@ import { generateMonster } from '../src/gfx/monsterGen.js';
 import { generateEnemyTemplate } from '../src/world/enemyGen.js';
 import { BIOMES } from '../src/world/biomes.js';
 
-const tpl = (seed) => generateEnemyTemplate({ seed, depth: 1, biome: BIOMES.catacumbas });
+const tpl = (seed) => generateEnemyTemplate({ seed, depth: 1, biome: BIOMES.necropolis });
 
 describe('generador de monstruos', () => {
   it('es determinista y produce siluetas sustanciales en ambas escalas', () => {

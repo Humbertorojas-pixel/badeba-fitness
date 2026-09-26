@@ -6,6 +6,8 @@ export const LSYSTEMS = {
   escombros: { axiom: 'F', rules: { F: 'F[+F]f[-F]' }, iterations: 2, skip: 0.3 },
   huesos: { axiom: 'F', rules: { F: 'F f[+F]f[-F]' }, iterations: 2, skip: 0.4 },
   grietas: { axiom: 'F', rules: { F: 'F[-F]F' }, iterations: 3, skip: 0.25 },
+  flores: { axiom: 'F', rules: { F: 'F[+F]F[-F]F' }, iterations: 2, skip: 0.55 },
+  musgo: { axiom: 'FX', rules: { X: '[+FX][-FX]F', F: 'F' }, iterations: 3, skip: 0.3 },
 };
 
 export function expand(axiom, rules, iterations) {

@@ -70,19 +70,25 @@ try {
   await press('z');
   await wait(1400);
   await shot('02-mundo-intro');
-  await press('z', 4, 400);
-  await wait(2500);
+  // Avanza los diálogos hasta que el jugador pueda moverse.
+  for (let i = 0; i < 25 && (await page.evaluate(() => window.__game.scene.getScene('Overworld').busy)); i++) await press('z', 1, 500);
+  await wait(800);
   await shot('03-mundo');
 
-  const route = await pathToEnemy();
-  if (!route.length) throw new Error('No hay camino a ningún enemigo');
-  for (const dir of route) {
-    if ((await scenes()).includes('Battle')) break;
-    while (!(await step(dir))) {
-      await wait(100);
+  // La prueba verifica flujos, no el azar del combate: el jugador empieza fuerte.
+  await page.evaluate(() => { const p = window.__game.registry.get('run').player; p.attrs.fuerza = 40; p.attrs.salud = 30; p.hp = 140; });
+  // Las criaturas deambulan: se re-planifica la ruta cada pocos pasos hasta entrar en combate.
+  for (let leg = 0; leg < 40 && !(await scenes()).includes('Battle'); leg++) {
+    const route = await pathToEnemy();
+    if (!route.length) throw new Error('No hay camino a ningún enemigo');
+    for (const dir of route.slice(0, 6)) {
       if ((await scenes()).includes('Battle')) break;
+      for (let t = 0; t < 30 && !(await step(dir)); t++) {
+        await wait(120);
+        if ((await scenes()).includes('Battle')) break;
+      }
+      await wait(260);
     }
-    await wait(260);
   }
   await wait(2500);
   const s1 = await scenes();
@@ -116,7 +122,11 @@ try {
     });
     await press('Enter', 1, 500);
     await shot('10-pausa');
-    await press('ArrowDown', 1, 200);
+    await press('z', 1, 900);
+    await shot('10b-mapa');
+    await press('x', 1, 600);
+    await press('Enter', 1, 500);
+    await press('ArrowDown', 2, 200);
     await press('z', 1, 800);
     await press('z', 2, 250);
     await shot('11-estado');
