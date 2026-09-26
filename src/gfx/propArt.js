@@ -825,6 +825,159 @@ Object.assign(ART, {
   },
 });
 
+
+// ---------------------------------------------------------------- piedra, tumbas y ruinas
+
+function mossy(b, rng, n, area) {
+  const [x0, y0, x1, y1] = area;
+  for (let i = 0; i < n; i++) {
+    const x = rng.int(x0, x1);
+    const y = rng.int(y0, y1);
+    if (b.get(x, y) && b.get(x, y) !== PAL.ink) b.set(x, y, rng.chance(0.5) ? PAL.moss1 : PAL.moss2);
+  }
+}
+
+Object.assign(ART, {
+  estatua(B, v) {
+    const rng = createRng(121 + v);
+    const b = layer(32, 48);
+    const ped = layer(32, 48).rect(4, 40, 24, 8, '#').rect(6, 36, 20, 4, '#');
+    b.paste(ballShade(ped, STONE, -0.7, -0.4), 0, 0);
+    b.rect(10, 42, 12, 3, PAL.stone0).line(11, 43, 20, 43, PAL.stone1);
+    if (v === 1) {
+      const wings = layer(32, 48).poly([[10, 16], [2, 6], [1, 20], [8, 32]], '#').poly([[22, 16], [30, 6], [31, 20], [24, 32]], '#');
+      b.paste(ballShade(wings, [PAL.stone0, PAL.stone1, PAL.stone2, PAL.bone0], -0.8, -0.3), 0, 0);
+      for (const [x0, x1] of [[3, 8], [29, 24]]) for (let y = 12; y < 28; y += 4) b.line(x0, y, x1, y + 3, PAL.stone0);
+    }
+    const body = layer(32, 48).poly([[10, 36], [22, 36], [20, 18], [16, 14], [12, 18]], '#').ellipse(16, 11, 5, 5.5, '#');
+    b.paste(ballShade(body, STONE), 0, 0);
+    b.ellipse(15, 12, 3, 3.5, PAL.stone0).ellipse(15, 13, 2, 2.4, PAL.shade);
+    for (const x of [13, 16, 19]) b.line(x, 22, x - 1, 35, PAL.stone1);
+    if (v === 2) {
+      b.line(23, 12, 23, 38, PAL.stone3).line(24, 12, 24, 38, PAL.stone1).rect(20, 20, 8, 2, PAL.stone2).rect(22, 8, 3, 4, PAL.stone2);
+    } else {
+      b.ellipse(16, 23, 3, 2.5, PAL.stone2).set(16, 22, PAL.stone3);
+    }
+    if (B.ground.style === 'ash' || v === 1) b.line(14, 16, 14, 24, PAL.stone0);
+    mossy(b, rng, 14, [4, 30, 28, 47]);
+    return b.outline(PAL.ink);
+  },
+  columna(B, v) {
+    const rng = createRng(131 + v);
+    const b = layer(16, 48);
+    const top = v ? 14 + rng.int(0, 6) : 8;
+    const shaft = layer(16, 48).rect(4, top, 8, 42 - top, '#');
+    if (v) shaft.poly([[4, top], [12, top], [10, top - 4], [7, top - 1], [5, top - 5]], '#');
+    b.paste(ballShade(shaft, STONE, -1, -0.1), 0, 0);
+    for (const x of [6, 8, 10]) b.line(x, top + 2, x, 40, PAL.stone1);
+    b.line(5, top + 2, 5, 40, PAL.stone3);
+    if (!v) {
+      part(b, STONE, (l) => l.rect(2, 5, 12, 3, '#').ellipse(3, 6, 2, 2, '#').ellipse(13, 6, 2, 2, '#'), 1);
+      b.rect(3, 8, 10, 1, PAL.stone0);
+    }
+    part(b, STONE, (l) => l.rect(2, 41, 12, 3, '#').rect(1, 44, 14, 4, '#'), 1);
+    if (v) {
+      part(b, STONE, (l) => l.rect(12, 44, 4, 3, '#').rect(0, 45, 3, 3, '#'), 1);
+      for (let y = top; y < 40; y += 2) if (rng.chance(0.5)) b.set(rng.chance(0.5) ? 4 : 11, y, PAL.moss1);
+      b.line(9, top + 6, 11, 30, PAL.moss2).line(11, 30, 10, 36, PAL.moss1);
+    }
+    mossy(b, rng, 6, [1, 40, 15, 47]);
+    return b.outline(PAL.ink);
+  },
+  lapida(B, v) {
+    const rng = createRng(141 + v * 3);
+    const b = layer(16, 16);
+    if (v === 1) {
+      const m = layer(16, 16).rect(6, 2, 4, 13, '#').rect(3, 5, 10, 3, '#');
+      b.paste(ballShade(m, STONE), 0, 0);
+      b.set(7, 9, PAL.stone0).set(8, 11, PAL.stone0);
+    } else if (v === 2) {
+      const m = layer(16, 16).poly([[3, 15], [12, 15], [13, 6], [9, 3], [4, 5]], '#');
+      b.paste(ballShade(m, STONE), 0, 0);
+      b.line(8, 4, 7, 9, PAL.shade).line(7, 9, 9, 12, PAL.shade);
+    } else {
+      const m = layer(16, 16).rect(4, 6, 8, 9, '#').ellipse(8, 6, 4, 3.5, '#');
+      b.paste(ballShade(m, STONE), 0, 0);
+      b.rect(7, 5, 2, 6, PAL.stone0).rect(5, 7, 6, 1, PAL.stone0).set(6, 12, PAL.stone0).set(9, 12, PAL.stone0);
+    }
+    mossy(b, rng, 4, [3, 9, 12, 14]);
+    b.outline(PAL.ink);
+    for (const x of [2, 4, 11, 13]) b.set(x, 15, PAL.moss2).set(x, 14, B.tallGrass?.[1] || PAL.moss1);
+    return b;
+  },
+  cruz(B, v) {
+    const b = layer(16, 32);
+    part(b, [PAL.rust0, PAL.rust0, PAL.rust1, PAL.rust2], (l) => l.ellipse(8, 29, 7, 3, '#'), 1);
+    part(b, WOOD, (l) => l.rect(7, 6, 3, 23, '#').rect(3, 11, 11, 3, '#'), 1);
+    b.line(8, 7, 8, 26, PAL.rust0);
+    if (!v) b.rect(9, 14, 3, 5, PAL.blood1).set(11, 19, PAL.blood2).set(10, 20, PAL.blood1);
+    else b.ellipse(8, 12, 2, 2, PAL.bone1).set(8, 12, PAL.ink);
+    return b.outline(PAL.ink);
+  },
+  roca(B, v) {
+    const rng = createRng(151 + v);
+    const b = layer(16, 16);
+    const m = layer(16, 16).ellipse(8, 10.5, 7, 5, '#').ellipse(6.5, 8, 4.5, 3.8, '#');
+    if (v) m.ellipse(13, 12, 3, 2.5, '#');
+    b.paste(ballShade(m, B.rock.face), 0, 0);
+    b.line(7, 7, 9, 11, B.rock.face[0]);
+    mossy(b, rng, 3, [3, 5, 9, 8]);
+    return b.outline(PAL.ink);
+  },
+  pena(B, v) {
+    const rng = createRng(161 + v);
+    const b = layer(32, 32);
+    const m = layer(32, 32).poly([[4, 31], [28, 31], [27, 12], [21, 3], [11, 4], [5, 13]], '#');
+    b.paste(ballShade(m, B.rock.face), 0, 0);
+    for (const [x0, y0, x1, y1] of [[12, 12, 12, 20], [12, 16, 16, 12], [18, 14, 20, 22], [20, 18, 16, 22], [14, 24, 20, 24]]) {
+      b.line(x0, y0, x1, y1, PAL.ember1);
+      b.set(x0, y0, PAL.ember2);
+    }
+    mossy(b, rng, 16, [4, 20, 28, 31]);
+    for (let i = 0; i < 6; i++) b.set(rng.int(8, 24), rng.int(6, 12), PAL.bone0);
+    return b.outline(PAL.ink);
+  },
+  tocon(B, v) {
+    const b = layer(16, 16);
+    part(b, WOOD, (l) => l.rect(3, 7, 10, 7, '#').poly([[1, 15], [15, 15], [12, 11], [4, 11]], '#'), 1);
+    b.ellipse(8, 7, 5, 2.2, PAL.rust2).ellipse(8, 7, 3, 1.2, PAL.rust1).set(8, 7, PAL.rust0);
+    for (const x of [5, 8, 11]) b.line(x, 9, x, 13, PAL.rust0);
+    if (!v) { b.rect(12, 9, 2, 3, PAL.bone1); b.ellipse(13, 9, 2, 1.3, PAL.blood2); }
+    return b.outline(PAL.ink);
+  },
+  farol_roto() {
+    const b = layer(16, 32);
+    part(b, IRON, (l) => l.line(9, 31, 8, 12, '#', 2).line(8, 12, 3, 7, '#', 2).rect(6, 29, 6, 3, '#'), 1);
+    b.line(3, 8, 3, 11, PAL.stone2);
+    part(b, IRON, (l) => l.rect(1, 11, 5, 6, '#'), 1);
+    b.rect(2, 12, 3, 4, PAL.night).set(3, 13, PAL.steel3).set(2, 15, PAL.steel2);
+    return b.outline(PAL.ink);
+  },
+  escombro(B, v) {
+    const b = layer(16, 16);
+    for (const [x, y, w, h] of (v ? [[1, 10, 6, 5], [7, 9, 8, 6], [4, 5, 6, 5]] : [[2, 9, 7, 6], [8, 11, 7, 4], [5, 5, 5, 5]])) {
+      b.paste(ballShade(layer(16, 16).rect(x, y, w, h, '#'), STONE), 0, 0);
+      b.line(x, y, x + w - 1, y, PAL.stone3);
+    }
+    b.set(3, 14, PAL.moss1).set(12, 14, PAL.moss2);
+    return b.outline(PAL.ink);
+  },
+  hueso_grande(B, v) {
+    const b = layer(32, 32);
+    const skull = layer(32, 32).ellipse(13, 18, 11, 9, '#').rect(6, 22, 16, 6, '#');
+    b.paste(ballShade(skull, BONE), 0, 0);
+    b.ellipse(9, 18, 3, 3.5, PAL.ink).ellipse(17, 18, 3, 3.5, PAL.ink).set(9, 19, PAL.ember1);
+    b.poly([[12, 22], [14, 22], [13, 25]], PAL.ink);
+    for (let x = 8; x < 20; x += 3) b.rect(x, 27, 2, 3, PAL.bone2);
+    const horn = layer(32, 32);
+    for (let t = 0; t <= 1; t += 0.05) horn.ellipse(22 + t * 7, 12 - Math.sin(t * 2) * 8, 2.8 - t * 2, 2.8 - t * 2, '#');
+    b.paste(ballShade(horn, BONE), 0, 0);
+    if (v) for (const x of [24, 27]) b.line(x, 31, x + 2, 22, PAL.bone1);
+    part(b, [PAL.rust0, PAL.rust0, PAL.rust1, PAL.rust2], (l) => l.ellipse(14, 30, 13, 2.5, '#'), 1);
+    return b.outline(PAL.ink);
+  },
+});
+
 // Sombra tramada al pie de lo que se alza (luz desde arriba a la izquierda).
 const SHADOWED = new Set(['cripta', 'urna', 'sarcofago', 'arbol', 'pino', 'seco', 'sauce', 'hongo', 'estatua', 'columna', 'pena', 'estalagmita', 'espantapajaros', 'cartel', 'farol', 'farol_roto', 'cruz', 'arbol_ancestral', 'coloso', 'pozo']);
 
