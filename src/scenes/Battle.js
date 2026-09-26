@@ -14,6 +14,7 @@ import { createRng } from '../core/rng.js';
 import { createCombatant, createEnemyCombatant, resolveTurn } from '../core/battle.js';
 import { derive, gainXp, xpReward } from '../core/character.js';
 import { itemDisplayName } from '../core/loot.js';
+import { getStore, getProfile } from '../core/storage.js';
 import { MOVES } from '../data/moves.js';
 import { CONSUMABLES, RARITY_LABEL } from '../data/items.js';
 
@@ -357,6 +358,17 @@ export class Battle extends Phaser.Scene {
     } else if (outcome === 'lose') {
       audio.playMusic('derrota');
       await this.say(`Has caído en el piso ${run.floor}. La mazmorra te reclama.`);
+      // Permamuerte parcial: la partida se pierde; el perfil (pity y récords) permanece.
+      const profile = getProfile(this);
+      profile.deaths += 1;
+      profile.deepest = Math.max(profile.deepest, run.floor);
+      try {
+        const store = getStore();
+        await store.deleteRun();
+        await store.saveProfile(profile);
+      } catch (err) {
+        console.warn(err);
+      }
     }
     this.textbox.hide();
     this.cameras.main.fadeOut(500, 0, 0, 0);

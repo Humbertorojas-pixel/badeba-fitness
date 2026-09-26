@@ -17,6 +17,7 @@ import { buildTileset } from '../gfx/tiles.js';
 import { createRng, hashSeed } from '../core/rng.js';
 import { rollEnemyLoot } from '../core/loot.js';
 import { derive } from '../core/character.js';
+import { getStore, getProfile } from '../core/storage.js';
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const SIGHT = 3;
@@ -35,7 +36,8 @@ export class Overworld extends Phaser.Scene {
         if (key.startsWith('mon_') || key.startsWith('tiles_f')) this.textures.remove(key);
       }
     }
-    if (!this.run.floorData) this.buildFloorData();
+    const freshFloor = !this.run.floorData;
+    if (freshFloor) this.buildFloorData();
     const floor = this.run.floorData;
     this.floor = floor;
 
@@ -95,6 +97,7 @@ export class Overworld extends Phaser.Scene {
       this.run.pendingMessage = null;
       this.dialog(msg);
     }
+    if (freshFloor) this.autosave();
     const onResume = () => { this.busy = false; };
     this.events.on('resume', onResume);
     this.events.once('shutdown', () => this.events.off('resume', onResume));
@@ -105,9 +108,56 @@ export class Overworld extends Phaser.Scene {
     // Los enemigos cargan botín con las mismas reglas que el jugador (y con el mismo pity).
     const rng = createRng(hashSeed(floor.seed, 'loot'));
     const intelligence = derive(this.run.player).int;
-    for (const e of floor.enemies) e.template.loot = rollEnemyLoot(rng, this.run.pity, this.run.floor, intelligence);
+    const { pity } = getProfile(this);
+    for (const e of floor.enemies) e.template.loot = rollEnemyLoot(rng, pity, this.run.floor, intelligence);
     this.run.floorData = floor;
     this.run.pos = null;
+  }
+
+  async autosave() {
+    const profile = getProfile(this);
+    profile.deepest = Math.max(profile.deepest, this.run.floor);
+    try {
+      await getStore().saveRun(this.run, profile, 'auto');
+      this.toast('Autoguardado');
+    } catch (err) {
+      console.warn(err);
+      this.toast('No se pudo guardar');
+    }
+  }
+
+  toast(text) {
+    const w = measure(text) + 20;
+    const c = this.add.container(GAME_W - w - 4, 160).setScrollFactor(0).setDepth(DEPTH.ui);
+    c.add(drawBox(this.add.graphics(), 0, 0, w, 24));
+    c.add(pixelText(this, 10, 6, text, 'box'));
+    this.tweens.chain({
+      targets: c,
+      tweens: [{ y: 132, duration: 200, ease: 'Quad.out', delay: 400 }, { y: 160, duration: 200, ease: 'Quad.in', delay: 1200 }],
+      onComplete: () => c.destroy(),
+    });
+  }
+
+  async manualSave() {
+    await this.textbox.say('¿Guardar tu progreso?', { hold: true });
+    const menu = new Menu(this, this.controls, { x: GAME_W - 64, y: 64, w: 60, h: 46, items: [{ label: 'Sí' }, { label: 'No' }] });
+    const choice = await menu.open(0);
+    menu.destroy();
+    if (choice === 0) {
+      this.run.pos = { ...this.tile };
+      this.run.facing = this.facing;
+      try {
+        await getStore().saveRun(this.run, getProfile(this), 'manual');
+        audio.sfx('heal');
+        await this.textbox.say('Partida guardada. La oscuridad recordará tu paso.');
+      } catch (err) {
+        console.warn(err);
+        audio.sfx('bump');
+        await this.textbox.say('No se pudo guardar la partida.');
+      }
+    }
+    this.textbox.hide();
+    this.busy = false;
   }
 
   async openPauseMenu() {
@@ -118,7 +168,7 @@ export class Overworld extends Phaser.Scene {
     const points = this.run.player.points;
     const menu = new Menu(this, this.controls, {
       x: 158, y: 4, w: 78, h: 76, rowH: 16, padY: 10,
-      items: [{ label: 'MOCHILA' }, { label: points ? 'ESTADO +' : 'ESTADO', style: points ? 'unique' : 'box' }, { label: 'GUARDAR', disabled: true }, { label: 'CERRAR' }],
+      items: [{ label: 'MOCHILA' }, { label: points ? 'ESTADO +' : 'ESTADO', style: points ? 'unique' : 'box' }, { label: 'GUARDAR' }, { label: 'CERRAR' }],
     });
     const choice = await menu.open(this.pauseIndex || 0);
     menu.destroy();
@@ -126,6 +176,10 @@ export class Overworld extends Phaser.Scene {
     if (choice === 0 || choice === 1) {
       this.scene.launch(choice === 0 ? 'Bag' : 'Status');
       this.scene.pause();
+      return;
+    }
+    if (choice === 2) {
+      this.manualSave();
       return;
     }
     this.busy = false;

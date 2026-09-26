@@ -1,5 +1,4 @@
 import { newPlayer } from './character.js';
-import { newPity } from './loot.js';
 
 export function newRun(seed = Date.now() >>> 0) {
   return {
@@ -7,7 +6,6 @@ export function newRun(seed = Date.now() >>> 0) {
     floor: 1,
     player: newPlayer(),
     bag: { consumables: { tonico: 3, pocion: 0, incienso: 0 }, gear: [] },
-    pity: newPity(),
     defeated: [],
     introShown: false,
   };

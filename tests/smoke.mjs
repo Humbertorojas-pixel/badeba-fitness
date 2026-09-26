@@ -65,8 +65,10 @@ try {
   await page.goto('http://localhost:5174/');
   await wait(1500);
   await shot('01-titulo');
-  await press('Enter');
-  await wait(1200);
+  await press('Enter', 1, 800);
+  await shot('01b-menu-titulo');
+  await press('z');
+  await wait(1400);
   await shot('02-mundo-intro');
   await press('z', 4, 400);
   await wait(2500);
@@ -158,6 +160,39 @@ try {
     const floorNum = await page.evaluate(() => window.__game.registry.get('run').floor);
     await shot('09-piso-2');
     if (floorNum !== 2) throw new Error(`Se esperaba piso 2, piso actual: ${floorNum}`);
+
+    // Guardado: recargar la página y CONTINUAR debe devolver al piso 2 con el mismo nivel.
+    const level = await page.evaluate(() => window.__game.registry.get('run').player.level);
+    await wait(1500);
+    await page.reload();
+    await wait(1800);
+    await press('Enter', 1, 900);
+    await shot('14-titulo-continuar');
+    await press('z');
+    await wait(1800);
+    const loaded = await page.evaluate(() => { const r = window.__game.registry.get('run'); return { floor: r.floor, level: r.player.level }; });
+    if (loaded.floor !== 2 || loaded.level !== level) throw new Error(`Continuar falló: ${JSON.stringify(loaded)}`);
+
+    // Corrupción: se daña el guardado actual en IndexedDB; al continuar se restaura el respaldo (piso 1).
+    await page.evaluate(() => new Promise((resolve, reject) => {
+      const req = indexedDB.open('nexo', 1);
+      req.onsuccess = () => {
+        const tx = req.result.transaction('saves', 'readwrite');
+        const st = tx.objectStore('saves');
+        const g = st.get('run');
+        g.onsuccess = () => { const rec = g.result; rec.data = rec.data.slice(0, -40); st.put(rec, 'run'); };
+        tx.oncomplete = resolve;
+        tx.onerror = reject;
+      };
+    }));
+    await page.reload();
+    await wait(1800);
+    await press('Enter', 1, 900);
+    await press('z');
+    await wait(1800);
+    await shot('15-recuperado');
+    const recovered = await page.evaluate(() => window.__game.registry.get('run').floor);
+    if (recovered !== 1) throw new Error(`Se esperaba recuperar el respaldo del piso 1, piso: ${recovered}`);
   }
   console.log('Escenas finales:', await scenes());
 } catch (e) {
