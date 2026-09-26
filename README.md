@@ -1,6 +1,6 @@
 # NEXO — RPG 2D procedural
 
-RPG por turnos con gramática visual de Pokémon GBA, paleta oscura propia y atmósfera opresiva. Todo el arte y el audio se generan por código al arrancar: no hay archivos de imagen ni de sonido.
+RPG por turnos con gramática visual de Pokémon GBA, paleta oscura propia y atmósfera opresiva. Todo el arte y el audio se generan por código al arrancar: no hay archivos de imagen ni de sonido. Los enemigos deciden con **Laya** (modelo de decisión local) y los NPC conversan en **texto libre** con **Claude Haiku 4.5**; si la IA no está disponible, el juego sigue funcionando con reglas y diálogo local.
 
 Diseño completo: [`docs/GAME_DESIGN.md`](docs/GAME_DESIGN.md).
 
@@ -8,31 +8,51 @@ Diseño completo: [`docs/GAME_DESIGN.md`](docs/GAME_DESIGN.md).
 
 ```bash
 npm install
-npm run dev
+npm run play          # compila, arranca el servidor local y abre el navegador
 ```
 
-Abre `http://localhost:5173`.
+Sin nada más, el juego funciona completo con IA por reglas y diálogo local. Para activar la IA:
+
+```bash
+npm run setup-ai      # crea server/.venv con Laya (PyTorch CPU) y el SDK de Anthropic, y server/.env
+```
+
+Luego edita `server/.env` y pega tu `ANTHROPIC_API_KEY` si quieres diálogo generativo. La primera vez que arranques con Laya, descargará su modelo multilingüe (~650 MB) en segundo plano; mientras tanto el combate usa reglas. En equipos con poca RAM puedes poner `NEXO_NO_LAYA=1`.
 
 | Tecla | Acción |
 |---|---|
 | Flechas / WASD | Mover (toque corto = girar en el sitio) |
 | Z / Espacio | Aceptar · hablar · inspeccionar |
 | X / Esc / Retroceso | Volver |
-| Enter | Menú (MOCHILA, ESTADO) — también acepta |
+| Enter | Menú (MOCHILA, ESTADO, GUARDAR) — también acepta |
 | M | Silenciar |
+
+Al hablar con un NPC (o elegir HABLAR en combate) escribes libremente: **Enter** envía, **Esc** termina la conversación.
+
+## IA y límites de seguridad
+
+- **Laya** (en el servidor Python local) decide la acción de cada enemigo muestreando sus probabilidades calibradas, filtra lo que escribes (fuera de tema, romper el personaje, abuso) antes de gastar una llamada, estima si un NPC se vuelve hostil y si un enemigo acepta tu negociación. Nunca genera texto: no puede alucinar una acción.
+- **Claude Haiku 4.5** pone la voz: saludos y respuestas de NPC con su ficha de personaje y lo que perciben del piso, y la línea de apertura de cada enemigo.
+- La **API key vive solo en el servidor** (`server/.env`), nunca en el navegador. El servidor solo escucha en `127.0.0.1`.
+- Límites: 20 peticiones/min globales y 8 por conversación, presupuesto por sesión (`NEXO_SESSION_BUDGET_USD`, 0.50 por defecto) y diario (`NEXO_DAILY_BUDGET_USD`, 2.00), `max_tokens` de 160/90/60, interruptor de emergencia `NEXO_AI_DISABLED=1`. En el juego: 25 turnos por conversación y cierre a los 90 s de inactividad.
+- La inteligencia del jugador ayuda a negociar; llevar objetos legendarios o únicos despierta una codicia que hunde la negociación.
+- Caché de prompts: se usa caché automático, pero en Haiku 4.5 solo se activa cuando el prefijo supera 4096 tokens (conversaciones largas); por debajo de eso cada respuesta cuesta del orden de una décima de centavo.
 
 ## Desarrollo
 
 ```bash
-npm test          # pruebas de lógica (combate, pisos, generador de monstruos)
-npm run smoke     # abre el juego en Chromium, juega un combate y guarda capturas
-npm run build     # build de producción en dist/
+npm run dev           # Vite con recarga en caliente (sin el servidor Python, la IA queda en modo local)
+npm test              # lógica del juego (combate, pisos, loot, guardado, IA)
+npm run test:server   # servidor Python (límites, proxy, moderación) con Laya/Claude simulados
+npm run smoke         # juega en Chromium: combate, menús, descenso, guardado y recuperación
+npm run smoke:ai      # integración de IA en Chromium contra el servidor con Laya/Claude simulados
+npm run build         # build de producción en dist/
 ```
 
 ## Estado por fases
 
-- [x] **Fase 1** — movimiento en cuadrícula, piso fijo, combate por turnos estilo Pokémon, audio sintetizado, arte procedural.
+- [x] **Fase 1** — movimiento en cuadrícula, combate por turnos estilo Pokémon, audio sintetizado, arte procedural.
 - [x] **Fase 2** — pisos procedurales: 3 biomas (BSP, autómata celular, ruinas erosionadas), decoración por L-Systems, fragmentos multiversales, enemigos únicos por semilla, validación BFS con regeneración determinista.
 - [x] **Fase 3** — atributos manuales (Fuerza, Salud, Inteligencia, Maná), subida de nivel, maná como sintonización con desincronización por drenaje, loot Común/Raro/Legendario/Único con pity-timer, enemigos que usan y sueltan su ítem, pantallas de MOCHILA y ESTADO.
 - [x] **Fase 4** — guardado en IndexedDB con escritura atómica, autoguardado al entrar a cada piso y guardado manual, anillo de 3 respaldos con checksum y validación, restauración automática ante corrupción, permamuerte parcial (el perfil con pity y récords sobrevive).
-- [ ] Fase 5 — IA: Laya (decisiones) + Claude (diálogo libre con NPCs).
+- [x] **Fase 5** — servidor local con Laya (decisiones, moderación, escalamiento, persuasión) y proxy de Claude con límites; NPC con ficha de personaje y conversación libre; negociación en combate; todo con respaldo local si la IA no está.

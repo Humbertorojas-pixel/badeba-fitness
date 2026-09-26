@@ -4,3 +4,7 @@ dist/
 server/.venv/
 __pycache__/
 tests/.scratch/
+server/.env
+server/.usage.json
+server/.usage.tmp
+.pytest_cache/

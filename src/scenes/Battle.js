@@ -15,6 +15,11 @@ import { createCombatant, createEnemyCombatant, resolveTurn } from '../core/batt
 import { derive, gainXp, xpReward } from '../core/character.js';
 import { itemDisplayName } from '../core/loot.js';
 import { getStore, getProfile } from '../core/storage.js';
+import { TextInput } from '../ui/TextInput.js';
+import { decideEnemyAction, persuasionChance, greedLevel } from '../ai/enemyBrain.js';
+import { talk, bark } from '../ai/client.js';
+import { BARKS, pickBark } from '../data/barks.js';
+import { fit } from '../ui/itemText.js';
 import { MOVES } from '../data/moves.js';
 import { CONSUMABLES, RARITY_LABEL } from '../data/items.js';
 
@@ -29,7 +34,7 @@ class HpPanel {
     this.c = scene.add.container(x, y).setDepth(DEPTH.ui);
     this.c.add(drawBox(scene.add.graphics(), 0, 0, w, h));
     const lv = `Nv${level}`;
-    this.c.add(pixelText(scene, 9, 6, name, 'box'));
+    this.c.add(pixelText(scene, 9, 6, fit(name, w - 26 - measure(lv)), 'box'));
     this.c.add(pixelText(scene, w - 10 - measure(lv), 6, lv, 'box'));
     this.c.add(pixelText(scene, 9, 18, 'PS', 'blood'));
     this.bar = scene.add.graphics();
@@ -107,6 +112,7 @@ export class Battle extends Phaser.Scene {
     this.playerPanel.c.setVisible(false);
 
     this.textbox = new TextBox(this, this.controls);
+    this.textInput = new TextInput(this, this.controls);
     this.actionMenu = new Menu(this, this.controls, {
       x: 120, y: 112, w: 120, h: 48, cols: 2, colW: 54, rowH: 16, cancellable: false, padX: 14, padY: 9,
       items: [{ label: 'LUCHAR' }, { label: 'MOCHILA' }, { label: 'HABLAR' }, { label: 'HUIR' }],
@@ -171,7 +177,8 @@ export class Battle extends Phaser.Scene {
     });
     audio.sfx('miss');
     this.enemyPanel.c.setVisible(true);
-    await this.say(`¡${this.template.article} ${this.enemy.name} surge de la penumbra!`);
+    const who = this.template.article ? `${this.template.article} ${this.enemy.name}` : this.enemy.name;
+    await this.say(`¡${who} surge de la penumbra!`);
     const loot = this.template.loot;
     if (loot?.kind === 'equip' && loot.rarity !== 'comun') {
       if (loot.rarity !== 'raro') audio.sfx('encounter');
@@ -179,6 +186,10 @@ export class Battle extends Phaser.Scene {
       if (loot.rarity === 'legendario') await this.say('Un arma de las que solo existen en los mitos de los muertos.');
       if (loot.rarity === 'unico') await this.say('El aire se dobla a su alrededor. Ese objeto no obedece las leyes de este mundo.');
     }
+    const t = this.template;
+    const spoken = await bark({ name: t.name, archetype: t.archetype, item: loot?.kind === 'equip' ? loot.name : null }, { piso: this.run.floor, codicia: greedLevel(this.run) }, 'inicio del combate');
+    await this.say(spoken ? `«${spoken}»` : pickBark(this.rng, BARKS.intro[t.archetype] || BARKS.intro.beast));
+    if (['altísima', 'obsesiva'].includes(greedLevel(this.run))) await this.say(pickBark(this.rng, BARKS.greed));
     this.playerPanel.c.setVisible(true);
   }
 
@@ -212,11 +223,40 @@ export class Battle extends Phaser.Scene {
         bag.destroy();
         if (i >= 0 && i < keys.length) return { type: 'item', item: keys[i] };
       } else if (choice === 2) {
-        await this.say(`${this.enemy.name} solo responde con un gruñido gutural.`);
+        this.textbox.hide();
+        const { text } = await this.textInput.prompt(`Hablas con ${this.enemy.name}:`);
+        if (text) return { type: 'talk', text };
       } else if (choice === 3) {
         return { type: 'flee' };
       }
     }
+  }
+
+  // Negociar: la señal de Laya (si existe) se combina con Inteligencia y codicia; Claude pone la voz.
+  async negotiate(text) {
+    const greed = greedLevel(this.run);
+    const intelligence = derive(this.run.player).int;
+    const t = this.template;
+    this.textbox.show(`${this.enemy.name} escucha...`);
+    const res = await talk({
+      mode: 'negotiate',
+      enemy: { name: t.name, archetype: t.archetype, item: t.loot?.kind === 'equip' ? t.loot.name : null },
+      context: { inteligencia: intelligence, codicia: greed, piso: this.run.floor },
+      history: [],
+      message: text,
+    });
+    if (res?.blocked) {
+      await this.say(`${this.enemy.name} no entiende tus palabras.`);
+      return false;
+    }
+    const success = this.rng.next() < persuasionChance({ layaProb: res?.persuaded, intelligence, greed });
+    await this.say(res?.reply ? `«${res.reply}»` : pickBark(this.rng, success ? BARKS.spared : BARKS.refuse));
+    if (success) {
+      if (res?.reply) await this.say(pickBark(this.rng, BARKS.spared));
+      return true;
+    }
+    if (['altísima', 'obsesiva'].includes(greed)) await this.say(pickBark(this.rng, BARKS.greed));
+    return false;
   }
 
   async flow() {
@@ -224,7 +264,12 @@ export class Battle extends Phaser.Scene {
     let outcome = 'continue';
     while (outcome === 'continue') {
       const action = await this.chooseAction();
-      const result = resolveTurn({ player: this.player, enemy: this.enemy, consumables: this.run.bag.consumables }, action, this.rng);
+      if (action.type === 'talk' && (await this.negotiate(action.text))) {
+        outcome = 'spared';
+        break;
+      }
+      const enemyAction = await decideEnemyAction({ enemy: this.enemy, player: this.player, template: this.template, run: this.run }, this.rng);
+      const result = resolveTurn({ player: this.player, enemy: this.enemy, consumables: this.run.bag.consumables }, action, this.rng, enemyAction);
       await this.play(result.events);
       outcome = result.outcome;
     }
@@ -348,8 +393,16 @@ export class Battle extends Phaser.Scene {
     if (outcome === 'win') {
       audio.playMusic('victoria');
       run.defeated.push(this.enemyId);
-      await this.say(`Has sobrevivido a ${this.template.article.toLowerCase()} ${this.enemy.name}.`);
+      await this.say(`Has sobrevivido a ${this.template.article ? `${this.template.article.toLowerCase()} ` : ''}${this.enemy.name}.`);
       await this.rewards();
+    } else if (outcome === 'spared') {
+      run.defeated.push(this.enemyId);
+      audio.sfx('heal');
+      await new Promise((r) => this.tweens.add({ targets: this.enemySprite, alpha: 0, duration: 600, onComplete: r }));
+      const xp = Math.ceil(xpReward(this.template) / 2);
+      await this.say(`Tus palabras te abrieron paso. Ganas ${xp} puntos de experiencia.`);
+      const levels = gainXp(run.player, xp);
+      if (levels) await this.say(`¡${run.player.name} sube al nivel ${run.player.level}! (+${levels * 3} puntos de atributo)`);
     } else if (outcome === 'enemyFled') {
       run.defeated.push(this.enemyId);
     } else if (outcome === 'fled') {

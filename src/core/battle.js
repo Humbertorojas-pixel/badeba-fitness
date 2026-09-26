@@ -109,7 +109,8 @@ function performMove(events, actor, target, actorSide, moveId, rng) {
 }
 
 // Resuelve un turno completo. Muta player/enemy/consumibles y devuelve eventos + resultado.
-export function resolveTurn({ player, enemy, consumables }, action, rng) {
+// `precomputed` permite inyectar la acción del enemigo decidida por Laya (asíncrona).
+export function resolveTurn({ player, enemy, consumables }, action, rng, precomputed = null) {
   const events = [];
   player.guarding = false;
   enemy.guarding = false;
@@ -135,7 +136,7 @@ export function resolveTurn({ player, enemy, consumables }, action, rng) {
     if (item.restoreMana) events.push({ type: 'restoreMana' });
   }
 
-  const enemyAction = chooseEnemyAction(enemy, player, rng);
+  const enemyAction = precomputed ?? chooseEnemyAction(enemy, player, rng);
   let order = ['enemy'];
   if (action.type === 'move') {
     const guard = MOVES[action.move].kind === 'guard';

@@ -20,8 +20,10 @@ export function createControls(scene) {
   const held = new Set();
   const stack = [];
   const pressed = new Set();
+  let suspended = false;
 
   const onDown = (e) => {
+    if (suspended) return;
     if (e.key === 'm' || e.key === 'M') {
       if (!e.repeat) audio.toggleMute();
       return;
@@ -73,5 +75,8 @@ export function createControls(scene) {
     start: () => take('start'),
     confirmHeld: () => [...held].some((k) => actionsOf(k).includes('confirm')),
     justDir: () => DIRS.find((d) => take(d)) || null,
+    // Durante la escritura libre el teclado pertenece al campo de texto.
+    suspend: () => { suspended = true; blur(); },
+    resume: () => { suspended = false; blur(); },
   };
 }

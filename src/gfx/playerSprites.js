@@ -99,6 +99,26 @@ export function buildPlayerOverworld() {
 
 export const DIR_FRAME_BASE = { down: 0, up: 3, left: 6, right: 9 };
 
+// NPCs: el mismo chibi con otra paleta (ropa, pelo), como los NPC de Pokémon comparten base.
+export const NPC_PALETTES = {
+  peregrina: { hair: PAL.bone1, hairHi: PAL.bone2, cloth: PAL.rust1, clothHi: PAL.rust2, clothDk: PAL.rust0, robe: PAL.moss1, robeHi: PAL.moss2, robeDk: PAL.moss0 },
+  mercenario: { hair: PAL.rust0, hairHi: PAL.rust1, cloth: PAL.stone1, clothHi: PAL.stone2, clothDk: PAL.stone0, robe: PAL.steel0, robeHi: PAL.steel1, robeDk: PAL.night },
+  loco: { hair: PAL.bone0, hairHi: PAL.bone1, cloth: PAL.moss0, clothHi: PAL.moss1, clothDk: PAL.night, robe: PAL.blood0, robeHi: PAL.blood1, robeDk: PAL.ink },
+  monja: { hair: PAL.ink, hairHi: PAL.night, cloth: PAL.bone1, clothHi: PAL.bone2, clothDk: PAL.bone0, robe: PAL.night, robeHi: PAL.dusk, robeDk: PAL.ink },
+  nino: { hair: PAL.ember0, hairHi: PAL.ember1, cloth: PAL.bone0, clothHi: PAL.bone1, clothDk: PAL.stone1, robe: PAL.stone1, robeHi: PAL.stone2, robeDk: PAL.stone0 },
+};
+
+export function buildNpcFrames(key) {
+  const p = NPC_PALETTES[key];
+  const map = {
+    [C.hair]: p.hair, [C.hairHi]: p.hairHi,
+    [C.armor]: p.cloth, [C.armorHi]: p.clothHi, [C.armorDk]: p.clothDk,
+    [C.cape]: p.robe, [C.capeHi]: p.robeHi, [C.capeDk]: p.robeDk,
+    [C.blade]: p.cloth, [C.bladeHi]: p.clothHi,
+  };
+  return buildPlayerOverworld().map((b) => b.clone().mask((_x, _y, c) => map[c]));
+}
+
 const RAMP = {
   cape: [PAL.blood0, PAL.blood0, PAL.blood1, PAL.blood2],
   steel: [PAL.steel0, PAL.steel1, PAL.steel2, PAL.steel3],

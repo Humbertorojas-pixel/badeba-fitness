@@ -68,5 +68,7 @@ export function validateFloor(floor) {
   if (!floor.start || !floor.stairs) return false;
   const seen = reachable(floor, floor.start);
   const ok = (p) => seen[p.y * floor.w + p.x] === 1;
-  return ok(floor.stairs) && floor.enemies.every(ok);
+  // Los NPC son bloqueantes: se comprueba que alguna casilla vecina sea alcanzable.
+  const talkable = (n) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => ok({ x: n.x + dx, y: n.y + dy }) && !isBlocked(floor, n.x + dx, n.y + dy));
+  return ok(floor.stairs) && floor.enemies.every(ok) && (floor.npcs || []).every(talkable);
 }

@@ -18,9 +18,17 @@ import { createRng, hashSeed } from '../core/rng.js';
 import { rollEnemyLoot } from '../core/loot.js';
 import { derive } from '../core/character.js';
 import { getStore, getProfile } from '../core/storage.js';
+import { TextInput } from '../ui/TextInput.js';
+import { refreshAiStatus, aiStatus, talk } from '../ai/client.js';
+import { greedLevel } from '../ai/enemyBrain.js';
+import { fallbackGreeting, fallbackReply, BLOCKED_REPLY } from '../ai/npcFallback.js';
+import { generateEnemyTemplate } from '../world/enemyGen.js';
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+const OPPOSITE = { up: 'down', down: 'up', left: 'right', right: 'left' };
 const SIGHT = 3;
+const MAX_TURNS = 25;
+const HOSTILE_BIOME = { archetypes: { humanoid: 1 }, ramps: ['steel', 'rust', 'flesh'] };
 
 export class Overworld extends Phaser.Scene {
   constructor() {
@@ -65,6 +73,14 @@ export class Overworld extends Phaser.Scene {
         return { ...e, sprite, shadow };
       });
 
+    this.npcs = (floor.npcs || [])
+      .filter((n) => !this.run.defeated.includes(n.id))
+      .map((n) => {
+        const sprite = this.add.sprite(n.x * TILE + 8, n.y * TILE + TILE, `npc_${n.sheet.palette}`, DIR_FRAME_BASE.down).setOrigin(0.5, 1);
+        sprite.setDepth(DEPTH.entity + n.y);
+        return { data: n, sprite };
+      });
+
     const pos = this.run.pos || floor.start;
     this.tile = { x: pos.x, y: pos.y };
     this.facing = this.run.facing || 'down';
@@ -78,6 +94,9 @@ export class Overworld extends Phaser.Scene {
 
     this.add.image(0, 0, 'vignette').setOrigin(0, 0).setScrollFactor(0).setDepth(DEPTH.overlay);
     this.textbox = new TextBox(this, this.controls);
+    this.textInput = new TextInput(this, this.controls);
+    this.dialogRng = createRng((this.run.seed ^ Date.now()) >>> 0);
+    if (!aiStatus().checked || aiStatus().laya === 'loading') refreshAiStatus();
     this.busy = false;
     this.moving = false;
     this.turnLock = 0;
@@ -266,11 +285,120 @@ export class Overworld extends Phaser.Scene {
       this.startBattle(enemy);
       return;
     }
+    const npc = this.npcs.find((n) => n.data.x === x && n.data.y === y);
+    if (npc) {
+      this.talkTo(npc);
+      return;
+    }
     const spot = this.floor.inspect.find((i) => i.x === x && i.y === y);
     if (spot) {
       audio.sfx('inspect');
       this.dialog(spot.text);
     }
+  }
+
+  stairsHint(from) {
+    const dx = this.floor.stairs.x - from.x;
+    const dy = this.floor.stairs.y - from.y;
+    const ns = Math.abs(dy) > 3 ? (dy < 0 ? 'norte' : 'sur') : '';
+    const ew = Math.abs(dx) > 3 ? (dx < 0 ? 'oeste' : 'este') : '';
+    if (!ns && !ew) return 'muy cerca de aquí';
+    const combined = { norteeste: 'noreste', norteoeste: 'noroeste', sureste: 'sureste', suroeste: 'suroeste' };
+    return `hacia el ${ns && ew ? combined[ns + ew] : ns || ew}`;
+  }
+
+  // Lo que el NPC percibe: se inyecta en su prompt (y lo usa el diálogo local si no hay IA).
+  talkContext(npc) {
+    const p = this.run.player;
+    const d = derive(p);
+    return {
+      piso: this.run.floor,
+      bioma: this.floor.biomeName,
+      escalera: this.stairsHint(npc),
+      criaturas: this.enemies.length,
+      fragmento: !!this.floor.fragment,
+      codicia: greedLevel(this.run),
+      inteligencia: d.int,
+      viajero: {
+        nombre: p.name,
+        nivel: p.level,
+        vida: `${Math.round((p.hp / d.maxHp) * 100)}%`,
+        objetos_visibles: Object.values(p.equipment).filter(Boolean).map((i) => `${i.name} (${i.rarity})`),
+      },
+    };
+  }
+
+  async showThinking(name, promise) {
+    let dots = 0;
+    this.textbox.show(`${name} medita`);
+    const timer = this.time.addEvent({ delay: 350, loop: true, callback: () => { dots = (dots + 1) % 4; this.textbox.show(`${name} medita${'.'.repeat(dots)}`); } });
+    try {
+      return await promise;
+    } finally {
+      timer.remove();
+    }
+  }
+
+  // Conversación libre y continua con un NPC. La memoria vive mientras dure el piso.
+  async talkTo(npc) {
+    this.busy = true;
+    this.player.anims.stop();
+    this.player.setFrame(DIR_FRAME_BASE[this.facing]);
+    npc.sprite.setFrame(DIR_FRAME_BASE[OPPOSITE[this.facing]]);
+    audio.sfx('inspect');
+    const data = npc.data;
+    const { sheet } = data;
+    const rng = this.dialogRng;
+    const context = this.talkContext(data);
+
+    if (!data.history.length) {
+      const res = await this.showThinking(sheet.name, talk({ mode: 'npc', npc: sheet, context, history: [], message: '' }));
+      data.history.push({ role: 'user', text: '(El viajero se acerca en silencio.)' }, { role: 'assistant', text: res?.reply || fallbackGreeting(sheet, rng) });
+    }
+    let line = data.history[data.history.length - 1].text;
+    for (;;) {
+      await this.textbox.say(`${sheet.name}: ${line}`);
+      if (data.turns >= MAX_TURNS) {
+        await this.textbox.say(`${sheet.name}: Ya no tengo nada más que decirte. Sigue bajando.`);
+        break;
+      }
+      const { text, reason } = await this.textInput.prompt(`Hablas con ${sheet.name}:`);
+      if (!text) {
+        if (reason === 'timeout') await this.textbox.say(`${sheet.name} se cansa de esperar y te da la espalda.`);
+        break;
+      }
+      const res = await this.showThinking(sheet.name, talk({ mode: 'npc', npc: sheet, context: this.talkContext(data), history: data.history, message: text }));
+      if (res?.blocked) {
+        line = BLOCKED_REPLY[res.blocked];
+        continue;
+      }
+      line = res?.reply || fallbackReply(sheet, text, context, rng);
+      data.history.push({ role: 'user', text }, { role: 'assistant', text: line });
+      data.turns += 1;
+      // Escalamiento: Laya estima si atacará; sin Laya, solo la codicia extrema lo provoca.
+      const greedy = ['altísima', 'obsesiva'].includes(context.codicia);
+      const p = res?.escalate ?? (greedy ? 0.35 : 0);
+      if (sheet.canTurnHostile && p >= 0.35 && rng.next() < p) {
+        await this.textbox.say(`${sheet.name}: ${line}`);
+        await this.npcTurnsHostile(npc);
+        return;
+      }
+    }
+    this.textbox.hide();
+    npc.sprite.setFrame(DIR_FRAME_BASE.down);
+    this.busy = false;
+  }
+
+  async npcTurnsHostile(npc) {
+    const { sheet } = npc.data;
+    this.cameras.main.shake(250, 0.01);
+    await this.textbox.say(`¡${sheet.name} desenvaina! Sus ojos ya no son humanos.`);
+    this.textbox.hide();
+    const template = generateEnemyTemplate({ seed: hashSeed(this.floor.seed, npc.data.id), depth: this.run.floor, biome: HOSTILE_BIOME });
+    template.name = sheet.name;
+    template.article = '';
+    template.loot = rollEnemyLoot(createRng(hashSeed(this.floor.seed, 'npcloot')), getProfile(this).pity, this.run.floor, derive(this.run.player).int);
+    this.startBattle({ id: npc.data.id, template });
   }
 
   tryMove(dir) {

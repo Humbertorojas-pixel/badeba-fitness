@@ -8,7 +8,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "smoke": "node tests/smoke.mjs"
+    "smoke": "node tests/smoke.mjs",
+    "play": "node scripts/play.mjs",
+    "setup-ai": "node scripts/setup-ai.mjs",
+    "test:server": "server/.venv/bin/python -m pytest -q server/tests",
+    "smoke:ai": "vite build --logLevel error && node tests/ai-smoke.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

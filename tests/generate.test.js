@@ -60,3 +60,16 @@ describe('generación procedural de pisos', () => {
     expect(expand('F', { F: 'F+F' }, 2)).toBe('F+F+F+F');
   });
 });
+
+describe('NPCs', () => {
+  it('el piso 1 siempre tiene un NPC alcanzable con ficha de personaje', () => {
+    for (let s = 1; s <= 30; s++) {
+      const f = generateFloor({ runSeed: s * 31, depth: 1 });
+      expect(f.npcs.length).toBe(1);
+      const n = f.npcs[0];
+      expect(n.sheet.name).toBeTruthy();
+      expect(n.sheet.personality).toBeTruthy();
+      expect(isBlocked(f, n.x, n.y)).toBe(true);
+    }
+  });
+});

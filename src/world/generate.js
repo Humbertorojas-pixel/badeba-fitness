@@ -3,6 +3,7 @@ import { T } from '../gfx/tiles.js';
 import { BIOMES, pickBiome } from './biomes.js';
 import { LSYSTEMS, expand, turtle } from './lsystem.js';
 import { generateEnemyTemplate } from './enemyGen.js';
+import { generateNpc } from './npcGen.js';
 import { validateFloor, isWall } from './floor.js';
 import { LORE, FRAGMENT_LORE } from '../data/lore.js';
 
@@ -17,7 +18,7 @@ function emptyFloor(w, h) {
     decal: new Array(w * h).fill(T.FLOOR),
     blockers: new Set(),
     start: null, stairs: null,
-    enemies: [], torches: [], inspect: [],
+    enemies: [], npcs: [], torches: [], inspect: [],
     fragment: null,
   };
 }
@@ -308,6 +309,22 @@ function tryGenerate(seed, depth, forceFragment) {
     const eseed = hashSeed(seed, `e${placed}`);
     f.enemies.push({ id: `e${placed}`, ...cellOf(f, c), template: generateEnemyTemplate({ seed: eseed, depth, biome }) });
     placed++;
+  }
+
+  // Un NPC por piso (casi siempre; siempre en el primero para presentar el diálogo).
+  if (depth === 1 || rng.chance(0.7)) {
+    const others = rng.shuffle(rooms.filter((r) => r.id !== f.fragment?.roomId && r !== stairsRoom && r !== startRoom));
+    const rooms2 = depth === 1 ? [startRoom, ...others] : [...others, startRoom];
+    for (const room of rooms2) {
+      const spots = room.cells.filter((c) => free(c) && openAround(f, c) && dist[c] >= 3
+        && f.enemies.every((e) => Math.abs(e.x - (c % f.w)) + Math.abs(e.y - Math.floor(c / f.w)) > 4));
+      if (!spots.length) continue;
+      const c = depth === 1 && room === startRoom ? spots.reduce((a, b) => (dist[a] <= dist[b] ? a : b)) : rng.pick(spots);
+      taken.add(c);
+      f.blockers.add(c);
+      f.npcs.push({ id: 'npc0', ...cellOf(f, c), sheet: generateNpc(hashSeed(seed, 'npc'), depth), history: [], turns: 0 });
+      break;
+    }
   }
 
   // Antorchas en caras de muro que dan a una sala.
