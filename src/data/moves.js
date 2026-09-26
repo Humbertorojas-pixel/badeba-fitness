@@ -7,5 +7,9 @@ export const MOVES = {
   lamento: { name: 'Lamento', power: 9, acc: 1.0, kind: 'attack' },
   azote: { name: 'Azote', power: 12, acc: 0.8, kind: 'attack' },
   picadura: { name: 'Picadura', power: 7, acc: 0.95, kind: 'attack' },
+  desgarro: { name: 'Desgarro', power: 16, acc: 0.85, kind: 'attack' },
+  ejecucion: { name: 'Ejecución', power: 18, acc: 0.75, kind: 'attack' },
+  alarido: { name: 'Alarido', power: 13, acc: 1.0, kind: 'attack' },
+  enjambre: { name: 'Enjambre', power: 14, acc: 0.9, kind: 'attack' },
   succion: { name: 'Succión', kind: 'drain', drain: 5 },
 };

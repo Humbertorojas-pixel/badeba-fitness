@@ -10,6 +10,7 @@ import { audio } from '../audio/audio.js';
 import { getRun } from '../core/state.js';
 import { ATTRS, ATTR_LABEL, SLOTS, SLOT_LABEL, derive, allocate, unequip, xpToNext } from '../core/character.js';
 import { fit } from '../ui/itemText.js';
+import { ensureHeroTextures } from '../gfx/heroTextures.js';
 
 // Pantalla de estado (como el RESUMEN de Pokémon): atributos, asignación de puntos y equipo.
 export class Status extends Phaser.Scene {
@@ -25,7 +26,7 @@ export class Status extends Phaser.Scene {
     drawBox(this.add.graphics(), 0, 40, 124, 72);
     drawBox(this.add.graphics(), 124, 40, 116, 72);
     drawBox(this.add.graphics(), 0, 112, 240, 48);
-    this.add.sprite(22, 34, 'player', 0).setOrigin(0.5, 1);
+    this.hero = this.add.sprite(22, 36, ensureHeroTextures(this, this.run.player.equipment).key, 0).setOrigin(0.5, 1);
     this.head = pixelText(this, 38, 8, '', 'box');
     this.xpText = pixelText(this, 38, 21, '', 'box');
     this.hpText = pixelText(this, 150, 8, '', 'box');
@@ -47,6 +48,7 @@ export class Status extends Phaser.Scene {
 
   refresh() {
     const p = this.run.player;
+    this.hero.setTexture(ensureHeroTextures(this, p.equipment).key, 0);
     const d = derive(p);
     this.head.setText(`${p.name}   Nv ${p.level}`);
     this.xpText.setText(`EXP ${p.xp}/${xpToNext(p.level)}`);

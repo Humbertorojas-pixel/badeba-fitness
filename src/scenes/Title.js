@@ -19,6 +19,7 @@ export class Title extends Phaser.Scene {
 
   create() {
     this.controls = createControls(this);
+    audio.setAmbience(null);
     this.add.image(0, 0, 'battle_bg').setOrigin(0, 0);
     this.add.rectangle(0, 112, GAME_W, 48, hexToInt(PAL.ink)).setOrigin(0, 0);
     this.add.image(0, 0, 'vignette').setOrigin(0, 0);

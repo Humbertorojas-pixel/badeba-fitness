@@ -9,7 +9,7 @@ export function modsText(mods) {
 
 export function describeItem(item) {
   if (item.kind === 'consumable') return CONSUMABLES[item.key].desc;
-  const parts = [`${RARITY_LABEL[item.rarity]} · ${modsText(item.mods)}`];
+  const parts = [`${RARITY_LABEL[item.rarity]} · ${modsText(item.mods) || 'Sin bonificación'}`];
   if (item.effect) parts.push(item.desc || EFFECT_DESC[item.effect]);
   if (item.sync) parts.push(`Sincronización: ${item.sync} de maná.`);
   return parts.join('\n');

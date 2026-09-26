@@ -46,6 +46,11 @@ export function buildMisc(scene) {
     ditheredRadial(ctx, 64, 48, { cx: 32, cy: 24, rx: 30, ry: 22, inner: 0.0, outer: 1.0, maxAlpha: 0.22, color: PAL.steel3, invert: true }));
 
 
+  canvasTexture(scene, 'aura_legendario', 112, 96, (ctx) =>
+    ditheredRadial(ctx, 112, 96, { cx: 56, cy: 48, rx: 52, ry: 44, inner: 0.0, outer: 1.0, maxAlpha: 0.4, color: PAL.ember1, invert: true }));
+  canvasTexture(scene, 'aura_unico', 112, 96, (ctx) =>
+    ditheredRadial(ctx, 112, 96, { cx: 56, cy: 48, rx: 52, ry: 44, inner: 0.0, outer: 1.0, maxAlpha: 0.45, color: PAL.blood2, invert: true }));
+
   const cursor = new PixelBuffer(6, 8);
   cursor.poly([[0, 0], [5, 4], [0, 8]], PAL.ink);
   addStrip(scene, 'ui_cursor', [cursor]);

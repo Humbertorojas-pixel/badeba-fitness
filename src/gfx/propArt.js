@@ -312,9 +312,93 @@ const ART = {
   },
 };
 
+Object.assign(ART, {
+  // Estalagmita: el techo del pozo recuerda que todo esto es una caverna.
+  estalagmita(B, v) {
+    const b = part(layer(16, 32), B.rock.face, (l) => {
+      l.poly([[2, 31], [14, 31], [11, 18], [9, 4 + v * 5], [7, 10], [5, 20]], '#');
+      if (!v) l.poly([[10, 31], [15, 31], [13, 24]], '#');
+    }, 2);
+    b.line(8, 8 + v * 5, 6, 26, B.rock.face[3]);
+    return b.outline(PAL.ink);
+  },
+  cristal(B, v) {
+    const ramp = v ? [PAL.blood0, PAL.blood1, PAL.blood3, PAL.ember2] : [PAL.steel0, PAL.steel2, PAL.steel3, PAL.bone2];
+    const b = part(layer(16, 16), ramp, (l) => {
+      l.poly([[6, 15], [9, 15], [9, 5], [7, 2], [5, 5]], '#');
+      l.poly([[2, 15], [6, 15], [5, 9], [3, 7]], '#');
+      l.poly([[9, 15], [14, 15], [13, 10], [11, 8]], '#');
+    }, 1);
+    b.line(6, 4, 6, 13, ramp[3]).set(3, 9, ramp[3]).set(11, 10, ramp[3]);
+    return b.outline(PAL.ink);
+  },
+  helecho(B, v) {
+    const rng = createRng(91 + v);
+    const b = layer(16, 16);
+    for (const [x1, y1] of [[1, 7], [4, 3], [8, 1], [12, 3], [15, 7]]) {
+      b.line(8, 15, x1, y1, B.leaves[2]);
+      for (let t = 0.3; t < 1; t += 0.2) b.set(Math.round(8 + (x1 - 8) * t), Math.round(15 + (y1 - 15) * t) + 1, B.leaves[rng.chance(0.5) ? 1 : 3]);
+    }
+    return b.outline(PAL.ink);
+  },
+  flores(B, v) {
+    const rng = createRng(101 + v);
+    const b = layer(16, 16);
+    const petals = rng.pick([[PAL.bone2, PAL.bone1], [PAL.blood3, PAL.blood2], [PAL.ember2, PAL.ember1], [PAL.steel3, PAL.steel2]]);
+    for (let i = 0; i < 4; i++) {
+      const x = rng.int(2, 13);
+      const y = rng.int(5, 12);
+      b.line(x, y + 1, x, 15, B.leaves[1]);
+      b.set(x, y, PAL.ember1).set(x - 1, y, petals[0]).set(x + 1, y, petals[0]).set(x, y - 1, petals[0]).set(x, y + 1, petals[1]);
+    }
+    return b;
+  },
+  tronco(B, v) {
+    const b = part(layer(32, 16), WOOD, (l) => l.rect(2, 6, 27, 8, '#'), 2);
+    part(b, WOOD, (l) => l.ellipse(28, 10, 3.5, 4.5, '#'), 1);
+    b.ellipse(28, 10, 2, 3, PAL.rust2).set(28, 10, PAL.rust1);
+    for (let x = 5; x < 26; x += 4) b.set(x, 8, PAL.rust0).set(x + 1, 11, PAL.rust0);
+    if (!v) for (let x = 4; x < 22; x += 3) b.set(x, 6, PAL.moss2).set(x + 1, 6, PAL.moss1);
+    return b.outline(PAL.ink);
+  },
+  espantapajaros() {
+    const b = layer(16, 32);
+    part(b, WOOD, (l) => l.rect(7, 8, 2, 24, '#').rect(1, 13, 14, 2, '#'), 1);
+    part(b, [PAL.rust0, PAL.rust1, PAL.rust2, PAL.bone0], (l) => l.poly([[4, 12], [12, 12], [13, 24], [3, 24]], '#'), 1);
+    part(b, [PAL.rust1, PAL.bone0, PAL.bone1, PAL.bone2], (l) => l.ellipse(8, 7, 3.5, 3.5, '#'), 1);
+    b.set(7, 7, PAL.ink).set(9, 7, PAL.ink).line(6, 9, 10, 9, PAL.ink);
+    part(b, [PAL.ink, PAL.night, PAL.shade, PAL.dusk], (l) => l.rect(3, 3, 10, 2, '#').rect(5, 0, 6, 3, '#'), 1);
+    return b.outline(PAL.ink);
+  },
+  cartel() {
+    const b = layer(16, 32);
+    part(b, WOOD, (l) => l.rect(7, 12, 2, 20, '#'), 1);
+    part(b, WOOD, (l) => l.poly([[1, 6], [12, 6], [15, 9], [12, 12], [1, 12]], '#'), 1);
+    b.line(3, 8, 10, 8, PAL.rust0).line(3, 10, 8, 10, PAL.rust0);
+    return b.outline(PAL.ink);
+  },
+});
+
+// Sombra tramada al pie de lo que se alza (luz desde arriba a la izquierda).
+const SHADOWED = new Set(['arbol', 'pino', 'seco', 'sauce', 'hongo', 'estatua', 'columna', 'pena', 'estalagmita', 'espantapajaros', 'cartel', 'farol', 'farol_roto', 'cruz', 'arbol_ancestral', 'coloso', 'pozo']);
+
+function castShadow(b) {
+  const cx = b.w / 2 + 2;
+  const cy = b.h - 2.5;
+  const rx = b.w * 0.42;
+  for (let y = b.h - 5; y < b.h; y++) {
+    for (let x = 0; x < b.w; x++) {
+      if (b.get(x, y) || (x + y) % 2) continue;
+      if (((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / 2.6) ** 2 <= 1) b.set(x, y, PAL.ink);
+    }
+  }
+  return b;
+}
+
 export const VARIANTS = { arbol: 3, pino: 3, seco: 3, sauce: 3, hongo: 2, arbusto: 2, roca: 2, lapida: 2, columna: 2, casa: 3 };
 
 export function drawProp(kind, B, v = 0) {
   const b = ART[kind](B, v);
+  if (SHADOWED.has(kind)) castShadow(b);
   return kind === 'costilla' && v === 1 ? b.flipH() : b;
 }

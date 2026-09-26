@@ -26,9 +26,14 @@ Luego edita `server/.env` y pega tu `ANTHROPIC_API_KEY` si quieres diálogo gene
 | Z / Espacio | Aceptar · hablar · inspeccionar · descansar en una hoguera |
 | X / Esc / Retroceso | Volver |
 | Enter | Menú (MAPA, MOCHILA, ESTADO, GUARDAR) — también acepta |
+| En el MAPA: Z · flechas · X | Cambiar zoom · desplazar · salir |
 | M | Silenciar |
 
-Cada piso es una **región** enorme (hasta 160×120 casillas): bosques, lagos, ríos con puentes, caminos que unen aldeas habitadas, monumentos colosales y la escalera de descenso escondida en algún lugar. El **MAPA** solo muestra lo que ya recorriste. En las aldeas hay **hogueras**: descansar en ellas cura por completo y guarda la partida. La **hierba alta** esconde encuentros, y los enemigos del piso deambulan y te persiguen si te ven.
+Cada piso es una **región** enorme (de 128×96 a 184×136 casillas): bosques, lagos, ríos con puentes, caminos con carteles que señalan aldeas y monumentos, huertos, estalagmitas, haces de luz que caen por grietas del techo y la escalera de descenso escondida en algún lugar. El **MAPA** es un pergamino con tres niveles de zoom (Z) que se desplaza con las flechas y solo muestra lo que ya recorriste. En las aldeas hay **hogueras**: descansar en ellas cura por completo y guarda la partida. La **hierba alta** esconde encuentros, y los enemigos del piso deambulan y te persiguen si te ven.
+
+- **Clima**: lluvia, tormenta con relámpagos, niebla, ceniza, brasas, esporas o polvo según el bioma; cambia mientras caminas y tiene efectos pequeños y legibles (la niebla acorta la vista de los enemigos y facilita huir, la lluvia saca más criaturas de la hierba, la tormenta y el polvo bajan la precisión en combate). Los NPC saben qué tiempo hace.
+- **Equipo visible**: la armadura (harapos, cuero, hábito, cota, coraza, placas) y el arma (daga, espada, maza, lanza, hacha, guadaña, mandoble) se ven en el personaje, en el mapa y de espaldas en combate; la rareza cambia el material (hierro, acero, acero negro con oro, metal sangrante).
+- **Enemigos por rareza**: común, raro, legendario (con nombre propio, cuernos, aura y un ataque de firma) y único (criaturas de leyenda). Cada región tiene un guardián legendario junto a su monumento que no persigue: tú decides si lo enfrentas. Los humanoides empuñan el arma que portan.
 
 Al hablar con un NPC (o elegir HABLAR en combate) escribes libremente: **Enter** envía, **Esc** termina la conversación.
 
@@ -60,3 +65,4 @@ npm run build         # build de producción en dist/
 - [x] **Fase 4** — guardado en IndexedDB con escritura atómica, autoguardado al entrar a cada piso y guardado manual, anillo de 3 respaldos con checksum y validación, restauración automática ante corrupción, permamuerte parcial (el perfil con pity y récords sobrevive).
 - [x] **Fase 5** — servidor local con Laya (decisiones, moderación, escalamiento, persuasión) y proxy de Claude con límites; NPC con ficha de personaje y conversación libre; negociación en combate; todo con respaldo local si la IA no está.
 - [x] **Fase 6** — pisos como regiones: terreno por ruido fractal (elevación y humedad), ríos por A*, red de caminos por árbol de expansión mínima con puentes y túneles, aldeas con casas, plaza, pozo, hoguera y aldeanos con rol, monumentos colosales por bioma (caballero arrodillado, árbol ancestral, costillar), 5 biomas con arte, música, partículas y fondo de combate propios, autotiles de caminos y agua, hierba alta que cubre al jugador, mapa con niebla de guerra, zonas con nombre, correr, encuentros en hierba y enemigos errantes.
+- [x] **Fase 7** — clima dinámico con efectos de juego, sonido y relámpagos; personaje dibujado por capas con el equipo visible; catálogo de armas y armaduras con aspecto propio; enemigos por rareza con guardianes legendarios; criaturas por anatomía (20 formas); regiones más grandes con tiles animados, orillas continuas, acantilados de doble altura, huertos, carteles, estalagmitas, cristales y haces de luz; mapa ilustrado con zoom.

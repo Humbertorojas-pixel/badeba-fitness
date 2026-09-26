@@ -180,6 +180,20 @@ export function addStrip(scene, key, buffers) {
   return tex;
 }
 
+// Registra frames en una rejilla de `cols` columnas (tilesets grandes: evita texturas muy anchas).
+export function addGrid(scene, key, buffers, cols = 16) {
+  const fw = buffers[0].w;
+  const fh = buffers[0].h;
+  const rows = Math.ceil(buffers.length / cols);
+  const canvas = document.createElement('canvas');
+  canvas.width = fw * cols;
+  canvas.height = fh * rows;
+  const ctx = canvas.getContext('2d');
+  buffers.forEach((b, i) => b.drawTo(ctx, (i % cols) * fw, Math.floor(i / cols) * fh));
+  if (scene.textures.exists(key)) scene.textures.remove(key);
+  return scene.textures.addCanvas(key, canvas);
+}
+
 // Matriz de Bayer 4x4 para tramado ordenado (dithering estilo GBA).
 export const BAYER4 = [
   [0, 8, 2, 10],

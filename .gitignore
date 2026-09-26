@@ -8,3 +8,5 @@ server/.env
 server/.usage.json
 server/.usage.tmp
 .pytest_cache/
+smoke-shots/
+ai-shots/

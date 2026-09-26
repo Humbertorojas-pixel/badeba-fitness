@@ -142,6 +142,20 @@ try {
     await shot('13-equipar');
     await press('z', 1, 400);
     await press('x', 1, 600);
+    for (let i = 0; i < 8 && (await scenes()).includes('Bag'); i++) {
+      const busy = await page.evaluate(() => window.__game.scene.getScene('Bag').busy);
+      await press(busy ? 'z' : 'x', 1, 500);
+    }
+    // El equipo se ve en el personaje: la textura corresponde al arma/armadura equipadas.
+    const hero = await page.evaluate(() => {
+      const r = window.__game.registry.get('run');
+      const ow = window.__game.scene.getScene('Overworld');
+      return { key: ow.hero.key, arma: r.player.equipment.arma?.rarity, armadura: r.player.equipment.armadura?.rarity, active: window.__game.scene.getScenes(true).map((x) => x.scene.key), paused: ow.sys.isPaused(), busy: ow.busy };
+    });
+    if (hero.key === 'hero_harapos-comun-espada-comun' || (hero.arma === 'legendario' && !hero.key.includes('mandoble-legendario'))) {
+      throw new Error(`El personaje no refleja el equipo: ${JSON.stringify(hero)}`);
+    }
+    await shot('13b-equipo-visible');
   }
 
   // Descenso: coloca al jugador junto a la escalera, la pisa y confirma "Sí".

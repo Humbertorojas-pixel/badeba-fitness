@@ -44,11 +44,69 @@ class AudioEngine {
     this.sfxBus = ctx.createGain();
     this.sfxBus.gain.value = 0.9;
     this.sfxBus.connect(this.master);
+    this.ambBus = ctx.createGain();
+    this.ambBus.gain.value = 1;
+    this.ambBus.connect(this.master);
     this.waves = { pulse12: pulseWave(ctx, 0.125), pulse25: pulseWave(ctx, 0.25), pulse50: pulseWave(ctx, 0.5) };
     const len = ctx.sampleRate;
     this.noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    if (this.pendingAmbience) this.setAmbience(this.pendingAmbience);
+  }
+
+  // Sonido ambiente del clima: ruido filtrado en bucle con fundido, más chasquidos o goteo.
+  setAmbience(kind) {
+    if (!this.ctx) {
+      this.pendingAmbience = kind;
+      return;
+    }
+    if ((this.amb?.kind || null) === (kind || null)) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+    if (this.amb) {
+      const old = this.amb;
+      old.gain.gain.cancelScheduledValues(now);
+      old.gain.gain.setValueAtTime(old.gain.gain.value, now);
+      old.gain.gain.linearRampToValueAtTime(0, now + 1.5);
+      old.nodes.forEach((n) => n.stop?.(now + 1.6));
+      clearInterval(old.timer);
+    }
+    this.amb = null;
+    const cfg = {
+      lluvia: { filter: 'bandpass', freq: 2600, q: 0.4, vol: 0.11, drip: 0.25 },
+      tormenta: { filter: 'bandpass', freq: 1500, q: 0.3, vol: 0.2, drip: 0.4 },
+      viento: { filter: 'bandpass', freq: 450, q: 1.4, vol: 0.12, lfo: 260 },
+      brasas: { filter: 'lowpass', freq: 700, q: 0.5, vol: 0.07, crackle: 0.35 },
+    }[kind];
+    if (!cfg) return;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    src.loop = true;
+    const f = ctx.createBiquadFilter();
+    f.type = cfg.filter;
+    f.frequency.value = cfg.freq;
+    f.Q.value = cfg.q;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(cfg.vol, now + 2.5);
+    src.connect(f).connect(gain).connect(this.ambBus);
+    src.start(now);
+    const nodes = [src];
+    if (cfg.lfo) {
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.13;
+      const depth = ctx.createGain();
+      depth.gain.value = cfg.lfo;
+      lfo.connect(depth).connect(f.frequency);
+      lfo.start(now);
+      nodes.push(lfo);
+    }
+    const timer = setInterval(() => {
+      if (cfg.drip && Math.random() < cfg.drip) this.tone({ wave: 'sine', freq: 900 + Math.random() * 900, slideTo: 300, dur: 0.05, vol: 0.05, bus: this.ambBus });
+      if (cfg.crackle && Math.random() < cfg.crackle) this.noise({ dur: 0.02 + Math.random() * 0.03, vol: 0.18, filter: 'bandpass', freq: 2500 + Math.random() * 2500, q: 2, bus: this.ambBus });
+    }, 120);
+    this.amb = { kind, gain, nodes, timer };
   }
 
   get ready() {
@@ -124,6 +182,10 @@ class AudioEngine {
       case 'faint': this.tone({ wave: 'pulse25', freq: 440, slideTo: 60, dur: 0.6, vol: 0.18 }); break;
       case 'flee': this.noise({ dur: 0.35, vol: 0.3, filter: 'bandpass', freq: 400, freqTo: 4000, q: 2 }); break;
       case 'stairs': seq(['E5', 'C5', 'A4', 'E4', 'C4', 'A3'], 0.08, { wave: 'pulse25', vol: 0.14 }); break;
+      case 'thunder':
+        this.noise({ dur: 0.3, vol: 0.35, filter: 'highpass', freq: 1200, freqTo: 400 });
+        this.noise({ t: now + 0.05, dur: 2.4, vol: 0.9, filter: 'lowpass', freq: 220, freqTo: 60, q: 0.7 });
+        break;
       case 'inspect': seq(['E5', 'B5'], 0.05, { wave: 'pulse12', vol: 0.12 }); break;
       default: break;
     }

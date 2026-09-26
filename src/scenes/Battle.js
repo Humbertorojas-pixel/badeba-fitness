@@ -4,9 +4,10 @@ import { createControls } from '../ui/controls.js';
 import { TextBox } from '../ui/TextBox.js';
 import { Menu } from '../ui/Menu.js';
 import { drawBox } from '../gfx/misc.js';
-import { pixelText } from '../gfx/font.js';
+import { pixelText, RARITY_STYLE } from '../gfx/font.js';
 import { measure } from '../gfx/fontGlyphs.js';
 import { ensureMonsterTextures } from '../gfx/monsterTextures.js';
+import { ensureHeroTextures } from '../gfx/heroTextures.js';
 import { PAL, hexToInt } from '../palette.js';
 import { audio } from '../audio/audio.js';
 import { getRun } from '../core/state.js';
@@ -22,19 +23,33 @@ import { BARKS, pickBark } from '../data/barks.js';
 import { fit } from '../ui/itemText.js';
 import { MOVES } from '../data/moves.js';
 import { CONSUMABLES, RARITY_LABEL } from '../data/items.js';
+import { weatherOf } from '../world/weather.js';
+import { WeatherView } from '../gfx/weatherView.js';
 
 const ENEMY_BASE = { x: 176, y: 70 };
 const PLAYER_BASE = { x: 64, y: 112 };
 
 // Panel de PS con barra verde/amarilla/roja animada, como en Pokémon GBA.
 class HpPanel {
-  constructor(scene, { x, y, w, h, name, level, showNumbers }) {
+  constructor(scene, { x, y, w, h, name, level, showNumbers, rank = 'comun' }) {
     this.scene = scene;
     this.showNumbers = showNumbers;
     this.c = scene.add.container(x, y).setDepth(DEPTH.ui);
     this.c.add(drawBox(scene.add.graphics(), 0, 0, w, h));
     const lv = `Nv${level}`;
-    this.c.add(pixelText(scene, 9, 6, fit(name, w - 26 - measure(lv)), 'box'));
+    const gem = rank !== 'comun';
+    const label = fit(name, w - 26 - measure(lv) - (gem ? 8 : 0));
+    this.c.add(pixelText(scene, 9, 6, label, RARITY_STYLE[rank] || 'box'));
+    if (gem) {
+      // Gema de rareza junto al nombre (plata, oro o sangre).
+      const color = hexToInt({ raro: PAL.steel2, legendario: PAL.ember1, unico: PAL.blood2 }[rank]);
+      const gx = 9 + measure(label) + 4;
+      const g = scene.add.graphics();
+      g.fillStyle(hexToInt(PAL.ink)).fillRect(gx + 1, 7, 3, 5).fillRect(gx, 8, 5, 3);
+      g.fillStyle(color).fillRect(gx + 2, 8, 1, 3).fillRect(gx + 1, 9, 3, 1);
+      g.fillStyle(0xffffff, 0.6).fillRect(gx + 2, 8, 1, 1);
+      this.c.add(g);
+    }
     this.c.add(pixelText(scene, w - 10 - measure(lv), 6, lv, 'box'));
     this.c.add(pixelText(scene, 9, 18, 'PS', 'blood'));
     this.bar = scene.add.graphics();
@@ -92,26 +107,40 @@ export class Battle extends Phaser.Scene {
     const { template } = this;
     this.enemy = createEnemyCombatant(template);
     this.player = this.buildPlayerCombatant();
+    // El clima también pesa en combate: precisión de ambos y facilidad para huir.
+    this.climate = weatherOf(this.run.weather);
+    this.enemy.accBonus += this.climate.acc;
+    this.player.accBonus += this.climate.acc;
+    this.player.fleeBonus = this.climate.flee;
 
     const bg = `battle_bg_${this.run.floorData?.biome}`;
     this.add.image(0, 0, this.textures.exists(bg) ? bg : 'battle_bg').setOrigin(0, 0);
     const tex = ensureMonsterTextures(this, String(template.seed), template);
     this.enemyGroup = this.add.container(0, 0);
     this.enemyGroup.add(this.add.image(ENEMY_BASE.x, ENEMY_BASE.y - 4, 'platform_enemy'));
+    const rank = template.rank || 'comun';
+    if (rank === 'legendario' || rank === 'unico') {
+      // Aura detrás de las criaturas legendarias y únicas.
+      this.aura = this.add.image(ENEMY_BASE.x, ENEMY_BASE.y - 30, `aura_${rank}`).setBlendMode(Phaser.BlendModes.ADD);
+      this.enemyGroup.add(this.aura);
+      this.tweens.add({ targets: this.aura, alpha: 0.55, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+    }
     this.enemySprite = this.add.image(ENEMY_BASE.x, ENEMY_BASE.y, tex.big).setOrigin(0.5, 1);
     this.enemyGroup.add(this.enemySprite);
     this.playerGroup = this.add.container(0, 0);
     this.playerGroup.add(this.add.image(PLAYER_BASE.x, PLAYER_BASE.y - 8, 'platform_player'));
-    this.playerSprite = this.add.image(PLAYER_BASE.x, PLAYER_BASE.y + 4, 'player_back').setOrigin(0.5, 1);
+    this.playerSprite = this.add.image(PLAYER_BASE.x, PLAYER_BASE.y + 4, ensureHeroTextures(this, this.run.player.equipment).back).setOrigin(0.5, 1);
     this.playerGroup.add(this.playerSprite);
 
-    this.enemyPanel = new HpPanel(this, { x: 4, y: 8, w: 120, h: 32, name: this.enemy.name, level: template.level });
+    this.enemyPanel = new HpPanel(this, { x: 4, y: 8, w: 120, h: 32, name: this.enemy.name, level: template.level, rank });
     this.playerPanel = new HpPanel(this, { x: 128, y: 70, w: 108, h: 40, name: this.player.name, level: this.run.player.level, showNumbers: true });
     this.enemyPanel.set(this.enemy.hp, this.enemy.maxHp);
     this.playerPanel.set(this.player.hp, this.player.maxHp);
     this.enemyPanel.c.setVisible(false);
     this.playerPanel.c.setVisible(false);
 
+    this.weather = new WeatherView(this, { world: false, depth: DEPTH.ui - 10 });
+    this.weather.set(this.run.weather?.kind || 'despejado', true);
     this.textbox = new TextBox(this, this.controls);
     this.textInput = new TextInput(this, this.controls);
     this.actionMenu = new Menu(this, this.controls, {
@@ -131,6 +160,10 @@ export class Battle extends Phaser.Scene {
     audio.playMusic('combate');
     this.cameras.main.fadeIn(200);
     this.flow();
+  }
+
+  update(time, delta) {
+    this.weather?.update(time, delta);
   }
 
   buildPlayerCombatant() {
@@ -177,9 +210,19 @@ export class Battle extends Phaser.Scene {
       this.tweens.add({ targets: this.playerGroup, x: 0, duration: 700, ease: 'Linear', onComplete: resolve });
     });
     audio.sfx('miss');
+    this.startIdle();
     this.enemyPanel.c.setVisible(true);
-    const who = this.template.article ? `${this.template.article} ${this.enemy.name}` : this.enemy.name;
+    const t0 = this.template;
+    const who = t0.article ? `${t0.article} ${this.enemy.name}` : t0.title ? `${this.enemy.name}, ${t0.title.toLowerCase()},` : this.enemy.name;
+    if (t0.rank === 'legendario' || t0.rank === 'unico') {
+      audio.sfx('encounter');
+      this.cameras.main.shake(300, t0.rank === 'unico' ? 0.012 : 0.006);
+    }
     await this.say(`¡${who} surge de la penumbra!`);
+    if (t0.rank === 'raro') await this.say('Es un ejemplar raro: más fuerte y más astuto que los de su especie.');
+    if (t0.rank === 'legendario') await this.say(`Una criatura legendaria. Los muertos de este pozo aún susurran su nombre.`);
+    if (t0.rank === 'unico') await this.say('Algo único, que no debería existir. El aire mismo se retuerce a su alrededor.');
+    if (this.climate.battle) await this.say(this.climate.battle);
     const loot = this.template.loot;
     if (loot?.kind === 'equip' && loot.rarity !== 'comun') {
       if (loot.rarity !== 'raro') audio.sfx('encounter');
@@ -192,6 +235,16 @@ export class Battle extends Phaser.Scene {
     await this.say(spoken ? `«${spoken}»` : pickBark(this.rng, BARKS.intro[t.archetype] || BARKS.intro.beast));
     if (['altísima', 'obsesiva'].includes(greedLevel(this.run))) await this.say(pickBark(this.rng, BARKS.greed));
     this.playerPanel.c.setVisible(true);
+  }
+
+  // Respiración: el enemigo sube y baja un píxel; los espectros flotan.
+  startIdle() {
+    const floaty = this.template.archetype === 'wraith';
+    this.idle = this.tweens.add({
+      targets: this.enemySprite, y: ENEMY_BASE.y - (floaty ? 3 : 1), duration: floaty ? 1100 : 700,
+      yoyo: true, repeat: -1, ease: 'Sine.inOut',
+    });
+    this.playerIdle = this.tweens.add({ targets: this.playerSprite, y: PLAYER_BASE.y + 3, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
   }
 
   say(text, auto = 0) {
@@ -342,6 +395,8 @@ export class Battle extends Phaser.Scene {
           break;
         case 'faint':
           audio.sfx('faint');
+          this.idle?.stop();
+          this.playerIdle?.stop();
           if (ev.side === 'enemy') await this.sink(this.enemySprite, ENEMY_BASE.y);
           else await this.sink(this.playerSprite, PLAYER_BASE.y + 4);
           break;
@@ -358,6 +413,7 @@ export class Battle extends Phaser.Scene {
           break;
         case 'enemyFled':
           audio.sfx('flee');
+          this.idle?.stop();
           await new Promise((r) => this.tweens.add({ targets: this.enemySprite, x: GAME_W + 60, duration: 400, onComplete: r }));
           break;
         default:
@@ -401,7 +457,8 @@ export class Battle extends Phaser.Scene {
     } else if (outcome === 'spared') {
       retire();
       audio.sfx('heal');
-      await new Promise((r) => this.tweens.add({ targets: this.enemySprite, alpha: 0, duration: 600, onComplete: r }));
+      this.idle?.stop();
+      await new Promise((r) => this.tweens.add({ targets: [this.enemySprite, this.aura].filter(Boolean), alpha: 0, duration: 600, onComplete: r }));
       const xp = Math.ceil(xpReward(this.template) / 2);
       await this.say(`Tus palabras te abrieron paso. Ganas ${xp} puntos de experiencia.`);
       const levels = gainXp(run.player, xp);
@@ -431,6 +488,7 @@ export class Battle extends Phaser.Scene {
     this.cameras.main.once('camerafadeoutcomplete', () => {
       if (outcome === 'lose') {
         audio.stopMusic();
+        audio.setAmbience(null);
         this.registry.remove('run');
         this.scene.start('Title');
       } else {

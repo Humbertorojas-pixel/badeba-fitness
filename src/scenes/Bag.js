@@ -11,6 +11,7 @@ import { audio } from '../audio/audio.js';
 import { getRun } from '../core/state.js';
 import { derive, equip } from '../core/character.js';
 import { describeItem, fit } from '../ui/itemText.js';
+import { ensureHeroTextures } from '../gfx/heroTextures.js';
 
 const POCKETS = ['Consumibles', 'Equipo'];
 const SHORT_SLOT = { arma: 'Arma', armadura: 'Armad.', reliquia: 'Reliq.' };
@@ -32,6 +33,8 @@ export class Bag extends Phaser.Scene {
     drawBox(this.add.graphics(), 94, 4, 142, 106);
     drawBox(this.add.graphics(), 0, 112, 240, 48);
     this.pocketLabel = pixelText(this, 12, 10, '', 'box');
+    // Vista previa: el personaje con lo que lleva puesto ahora mismo.
+    this.hero = this.add.sprite(76, 106, ensureHeroTextures(this, this.run.player.equipment).key, 0).setOrigin(0.5, 1);
     this.sideText = [0, 1, 2, 3, 4].map((i) => pixelText(this, 12, 38 + i * 13, '', 'box'));
     this.rows = Array.from({ length: ROWS }, (_, i) => ({
       name: pixelText(this, 110, 13 + i * 16, '', 'box'),
@@ -76,6 +79,7 @@ export class Bag extends Phaser.Scene {
     });
     this.cursor.setVisible(list.length > 0).setY(15 + (this.index - this.scroll) * 16);
 
+    this.hero.setTexture(ensureHeroTextures(this, this.run.player.equipment).key, 0);
     const d = derive(this.run.player);
     const side = this.pocket === 0
       ? [`PS ${this.run.player.hp}/${d.maxHp}`, '', 'Z: usar', 'X: salir']

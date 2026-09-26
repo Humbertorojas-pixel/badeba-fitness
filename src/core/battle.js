@@ -43,8 +43,9 @@ export function computeDamage(attacker, defender, move, rng, powerScale = 1) {
   return { amount: Math.max(1, Math.floor(dmg)), crit };
 }
 
+// `fleeBonus` viene del clima (niebla, polvo...).
 export function fleeChance(player, enemy) {
-  return Math.min(0.95, Math.max(0.2, 0.5 + (player.spd - enemy.spd) * 0.05));
+  return Math.min(0.95, Math.max(0.2, 0.5 + (player.spd - enemy.spd) * 0.05 + (player.fleeBonus || 0)));
 }
 
 // IA por reglas (base de respaldo; la fase de IA la reemplaza con Laya).

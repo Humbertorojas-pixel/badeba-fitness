@@ -7,7 +7,8 @@ import { drawBox } from '../gfx/misc.js';
 import { pixelText } from '../gfx/font.js';
 import { measure } from '../gfx/fontGlyphs.js';
 import { ensureMonsterTextures } from '../gfx/monsterTextures.js';
-import { DIR_FRAME_BASE } from '../gfx/playerSprites.js';
+import { DIR_FRAME_BASE } from '../gfx/heroArt.js';
+import { ensureHeroTextures } from '../gfx/heroTextures.js';
 import { audio } from '../audio/audio.js';
 import { getRun } from '../core/state.js';
 import { isBlocked } from '../world/floor.js';
@@ -23,12 +24,13 @@ import { refreshAiStatus, aiStatus, talk } from '../ai/client.js';
 import { greedLevel } from '../ai/enemyBrain.js';
 import { fallbackGreeting, fallbackReply, BLOCKED_REPLY } from '../ai/npcFallback.js';
 import { generateEnemyTemplate } from '../world/enemyGen.js';
+import { initialWeather, stepWeather, weatherOf, WEATHERS } from '../world/weather.js';
+import { WeatherView } from '../gfx/weatherView.js';
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const OPPOSITE = { up: 'down', down: 'up', left: 'right', right: 'left' };
-const SIGHT = 3;
 const MAX_TURNS = 25;
-const REVEAL = 7;
+const LIGHTNING_REVEAL = 13;
 const ROAM_RADIUS = 4;
 const ENCOUNTER_RATE = 1 / 10;
 const HOSTILE_BIOME = { archetypes: { humanoid: 1 }, ramps: ['steel', 'rust', 'flesh'] };
@@ -76,7 +78,8 @@ export class Overworld extends Phaser.Scene {
     const pos = this.run.pos || floor.start;
     this.tile = { x: pos.x, y: pos.y };
     this.facing = this.run.facing || 'down';
-    this.player = this.add.sprite(0, 0, 'player', DIR_FRAME_BASE[this.facing]).setOrigin(0.5, 1);
+    this.hero = ensureHeroTextures(this, this.run.player.equipment);
+    this.player = this.add.sprite(0, 0, this.hero.key, DIR_FRAME_BASE[this.facing]).setOrigin(0.5, 1);
     this.placePlayer();
 
     const cam = this.cameras.main;
@@ -86,6 +89,11 @@ export class Overworld extends Phaser.Scene {
     this.view.culler.update(0, true);
 
     this.add.image(0, 0, 'vignette').setOrigin(0, 0).setScrollFactor(0).setDepth(DEPTH.overlay);
+    // Clima: persiste en la partida; cada piso empieza con el suyo.
+    this.weatherRng = createRng((this.run.seed ^ (this.run.floor * 104729) ^ Date.now()) >>> 0);
+    if (!this.run.weather) this.run.weather = initialWeather(this.weatherRng, floor.biome, this.run.floor);
+    this.weather = new WeatherView(this, { world: true, onLightning: () => this.reveal(LIGHTNING_REVEAL) });
+    this.weather.set(this.run.weather.kind, true);
     this.textbox = new TextBox(this, this.controls);
     this.textInput = new TextInput(this, this.controls);
     this.dialogRng = createRng((this.run.seed ^ Date.now()) >>> 0);
@@ -115,9 +123,21 @@ export class Overworld extends Phaser.Scene {
     }
     if (freshFloor) this.autosave();
     this.time.addEvent({ delay: 650, loop: true, callback: () => this.roamEnemies() });
-    const onResume = () => { this.busy = false; };
+    const onResume = () => {
+      this.busy = false;
+      this.refreshHero();
+    };
     this.events.on('resume', onResume);
     this.events.once('shutdown', () => this.events.off('resume', onResume));
+  }
+
+  // Tras equipar o quitar algo en MOCHILA/ESTADO, el personaje cambia de aspecto.
+  refreshHero() {
+    const hero = ensureHeroTextures(this, this.run.player.equipment);
+    if (hero.key === this.hero.key) return;
+    this.hero = hero;
+    this.player.anims.stop();
+    this.player.setTexture(hero.key, DIR_FRAME_BASE[this.facing]);
   }
 
   buildFloorData() {
@@ -126,19 +146,20 @@ export class Overworld extends Phaser.Scene {
     const rng = createRng(hashSeed(floor.seed, 'loot'));
     const intelligence = derive(this.run.player).int;
     const { pity } = getProfile(this);
-    for (const e of floor.enemies) e.template.loot = rollEnemyLoot(rng, pity, this.run.floor, intelligence);
+    for (const e of floor.enemies) e.template.loot = rollEnemyLoot(rng, pity, this.run.floor, intelligence, e.template.rank);
     this.run.floorData = floor;
     this.run.pos = null;
     this.run.stepsSinceBattle = 0;
     this.run.grassBattles = 0;
   }
 
-  // Niebla de guerra: lo explorado queda en el MAPA.
-  reveal() {
+  // Niebla de guerra: lo explorado queda en el MAPA. El clima acorta o alarga la vista
+  // (y un relámpago ilumina de golpe una zona amplia).
+  reveal(radius = weatherOf(this.run.weather).reveal) {
     const { w, h, seen } = this.floor;
-    for (let dy = -REVEAL; dy <= REVEAL; dy++) {
-      for (let dx = -REVEAL; dx <= REVEAL; dx++) {
-        if (dx * dx + dy * dy > REVEAL * REVEAL) continue;
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dy * dy > radius * radius) continue;
         const x = this.tile.x + dx;
         const y = this.tile.y + dy;
         if (x >= 0 && y >= 0 && x < w && y < h) seen[y * w + x] = 1;
@@ -276,6 +297,10 @@ export class Overworld extends Phaser.Scene {
 
   update(time, delta) {
     this.view.update(time, delta);
+    this.weather.update(time, delta);
+    // Las criaturas respiran (un píxel arriba y abajo) mientras esperan.
+    const phase = Math.floor(time / 450) % 2;
+    for (const e of this.enemies) if (!e.busy && e.sprite.visible !== false) e.sprite.y = e.y * TILE + 15 - ((phase + e.x) % 2);
     if (this.busy || this.moving) return;
     if (this.turnLock > 0) this.turnLock -= delta;
 
@@ -358,6 +383,7 @@ export class Overworld extends Phaser.Scene {
     return {
       piso: this.run.floor,
       bioma: this.floor.biomeName,
+      clima: weatherOf(this.run.weather).name,
       lugar: this.zoneAt(npc)?.name || 'tierras salvajes',
       lugares_cercanos: this.floor.zones.map((z) => z.name),
       escalera: this.stairsHint(npc),
@@ -440,10 +466,11 @@ export class Overworld extends Phaser.Scene {
     this.cameras.main.shake(250, 0.01);
     await this.textbox.say(`¡${sheet.name} desenvaina! Sus ojos ya no son humanos.`);
     this.textbox.hide();
-    const template = generateEnemyTemplate({ seed: hashSeed(this.floor.seed, npc.data.id), depth: this.run.floor, biome: HOSTILE_BIOME });
+    const template = generateEnemyTemplate({ seed: hashSeed(this.floor.seed, npc.data.id), depth: this.run.floor, biome: HOSTILE_BIOME, rank: 'raro' });
     template.name = sheet.name;
+    template.title = null;
     template.article = '';
-    template.loot = rollEnemyLoot(createRng(hashSeed(this.floor.seed, 'npcloot')), getProfile(this).pity, this.run.floor, derive(this.run.player).int);
+    template.loot = rollEnemyLoot(createRng(hashSeed(this.floor.seed, 'npcloot')), getProfile(this).pity, this.run.floor, derive(this.run.player).int, 'raro');
     this.startBattle({ id: npc.data.id, template });
   }
 
@@ -457,7 +484,7 @@ export class Overworld extends Phaser.Scene {
       return;
     }
     if (isBlocked(this.floor, nx, ny) || this.npcAt(nx, ny) || this.enemies.some((e) => e.busy && e.tx === nx && e.ty === ny)) {
-      this.player.anims.play(`walk_${dir}`, true);
+      this.player.anims.play(this.hero.walk(dir), true);
       if (this.time.now - this.lastBump > 320) {
         audio.sfx('bump');
         this.lastBump = this.time.now;
@@ -468,7 +495,7 @@ export class Overworld extends Phaser.Scene {
     const running = this.controls.cancelHeld();
     this.moving = true;
     this.dest = { x: nx, y: ny };
-    this.player.anims.play(`walk_${dir}`, true);
+    this.player.anims.play(this.hero.walk(dir), true);
     this.player.anims.timeScale = running ? 1.8 : 1;
     this.player.setDepth(DEPTH.entity + Math.max(this.tile.y, ny) + 0.5);
     this.tweens.add({
@@ -488,6 +515,11 @@ export class Overworld extends Phaser.Scene {
 
   afterStep() {
     audio.playMusic(this.musicHere());
+    const changed = stepWeather(this.run.weather, this.weatherRng, this.floor.biome);
+    if (changed) {
+      this.weather.set(changed);
+      this.toast(WEATHERS[changed].name);
+    }
     this.reveal();
     const inGrass = this.view.updateGrass(this.tile, this.player.depth);
     this.run.stepsSinceBattle = (this.run.stepsSinceBattle || 0) + 1;
@@ -515,7 +547,7 @@ export class Overworld extends Phaser.Scene {
       this.spotted(spotter);
       return;
     }
-    if (inGrass && this.run.stepsSinceBattle > 4 && this.encounterRng.next() < ENCOUNTER_RATE) this.grassEncounter();
+    if (inGrass && this.run.stepsSinceBattle > 4 && this.encounterRng.next() < ENCOUNTER_RATE * weatherOf(this.run.weather).encounter) this.grassEncounter();
   }
 
   // Encuentro en la hierba alta: algo salta de entre las matas, como en Pokémon.
@@ -523,9 +555,9 @@ export class Overworld extends Phaser.Scene {
     this.busy = true;
     const n = this.run.grassBattles || 0;
     this.run.grassBattles = n + 1;
-    const template = generateEnemyTemplate({ seed: hashSeed(this.floor.seed, `g${n}`), depth: this.run.floor, biome: BIOMES[this.floor.biome] });
+    const template = generateEnemyTemplate({ seed: hashSeed(this.floor.seed, `g${n}`), depth: this.run.floor, biome: BIOMES[this.floor.biome], allowUnique: false });
     const rng = createRng(hashSeed(this.floor.seed, `gl${n}`));
-    template.loot = rng.chance(0.5) ? rollEnemyLoot(rng, getProfile(this).pity, this.run.floor, derive(this.run.player).int) : null;
+    template.loot = template.rank !== 'comun' || rng.chance(0.5) ? rollEnemyLoot(rng, getProfile(this).pity, this.run.floor, derive(this.run.player).int, template.rank) : null;
     const mark = pixelText(this, this.player.x - 1, this.player.y - 34, '!', 'blood').setDepth(DEPTH.ui);
     audio.sfx('encounter');
     this.time.delayedCall(450, () => {
@@ -571,11 +603,12 @@ export class Overworld extends Phaser.Scene {
   }
 
   inSight(e) {
+    if (e.data.passive) return false;
     const dx = this.tile.x - e.x;
     const dy = this.tile.y - e.y;
     if (dx !== 0 && dy !== 0) return false;
     const dist = Math.abs(dx) + Math.abs(dy);
-    if (dist === 0 || dist > SIGHT) return false;
+    if (dist === 0 || dist > weatherOf(this.run.weather).sight) return false;
     const sx = Math.sign(dx);
     const sy = Math.sign(dy);
     for (let i = 1; i < dist; i++) {
@@ -644,6 +677,7 @@ export class Overworld extends Phaser.Scene {
       this.run.floor += 1;
       this.run.defeated = [];
       this.run.floorData = null;
+      this.run.weather = null;
       this.run.pos = null;
       this.run.facing = 'down';
       this.scene.restart();

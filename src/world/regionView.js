@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
 import { TILE, DEPTH, GAME_W, GAME_H } from '../constants.js';
-import { buildTileset } from '../gfx/tiles.js';
+import { buildTileset, TILESET_COLS } from '../gfx/tiles.js';
 import { ensurePropTextures, propKey } from '../gfx/propTextures.js';
-import { computeTiles } from './floor.js';
+import { computeTiles, computeOverlay } from './floor.js';
 import { BIOMES } from './biomes.js';
 import { PROPS } from './props.js';
-import { hexToInt } from '../palette.js';
+import { hexToInt, hexToRgb, PAL } from '../palette.js';
+import { BAYER4 } from '../gfx/pixelBuffer.js';
 
 // Punto de luz de cada elemento luminoso (en píxeles dentro de su imagen).
 const LIGHT_AT = { hoguera: [8, 8], farol: [8, 6], hongo: [16, 14], hongo_chico: [8, 8], vela: [8, 8] };
@@ -71,13 +72,83 @@ class Ambience {
   }
 }
 
+// Anima tiles redibujando su hueco en el lienzo del tileset (agua, lava, hierba alta).
+class TileAnimator {
+  constructor(scene, key, anims) {
+    this.tex = scene.textures.get(key);
+    const ctx = this.tex.context;
+    this.ctx = ctx;
+    this.t = 0;
+    this.phase = 0;
+    this.items = ctx ? anims.map((a) => ({
+      index: a.index,
+      slow: a.slow,
+      frames: a.frames.map((buf) => {
+        const img = ctx.createImageData(16, 16);
+        for (let i = 0; i < 256; i++) {
+          const c = buf.px[i];
+          if (!c) continue;
+          const [r, g, b] = hexToRgb(c);
+          img.data.set([r, g, b, 255], i * 4);
+        }
+        return img;
+      }),
+    })) : [];
+  }
+
+  update(delta) {
+    this.t += delta;
+    if (this.t < 280 || !this.items.length) return;
+    this.t = 0;
+    this.phase++;
+    for (const it of this.items) {
+      if (it.slow && this.phase % 2) continue;
+      const f = (it.slow ? this.phase / 2 : this.phase) % it.frames.length;
+      this.ctx.putImageData(it.frames[f], (it.index % TILESET_COLS) * 16, Math.floor(it.index / TILESET_COLS) * 16);
+    }
+    this.tex.refresh();
+  }
+}
+
+// Haz de luz diagonal (tramado) que cae desde una grieta del techo.
+function ensureShaftTexture(scene, color) {
+  const key = `shaft_${color.slice(1)}`;
+  if (scene.textures.exists(key)) return key;
+  const w = 56;
+  const h = 120;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  const [r, g, b] = hexToRgb(color);
+  for (let y = 0; y < h; y++) {
+    const cx = 14 + (y / h) * 26;
+    const half = 7 + (y / h) * 9;
+    for (let x = 0; x < w; x++) {
+      const d = Math.abs(x + 0.5 - cx) / half;
+      if (d > 1) continue;
+      const k = (1 - d) * (0.45 + 0.55 * (y / h)) * (y > h - 16 ? (h - y) / 16 : 1);
+      if (BAYER4[y % 4][x % 4] > k) continue;
+      const i = (y * w + x) * 4;
+      img.data.set([r, g, b, 90], i);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  scene.textures.addCanvas(key, canvas);
+  return key;
+}
+
 export function buildRegionView(scene, floor, floorNum) {
   const B = BIOMES[floor.biome];
   const tilesKey = `tiles_f${floorNum}`;
-  if (!scene.textures.exists(tilesKey)) buildTileset(scene, B, floor.fragment ? BIOMES[floor.fragment.biome] : null, tilesKey);
+  const { anims } = buildTileset(scene, B, floor.fragment ? BIOMES[floor.fragment.biome] : null, tilesKey);
+  const animator = new TileAnimator(scene, tilesKey, anims);
   const map = scene.make.tilemap({ data: computeTiles(floor), tileWidth: TILE, tileHeight: TILE });
   const tileset = map.addTilesetImage(tilesKey, tilesKey, TILE, TILE, 0, 0);
   map.createLayer(0, tileset, 0, 0).setDepth(DEPTH.floor);
+  const over = scene.make.tilemap({ data: computeOverlay(floor), tileWidth: TILE, tileHeight: TILE });
+  over.createLayer(0, over.addTilesetImage(tilesKey, tilesKey, TILE, TILE, 0, 0), 0, 0).setDepth(DEPTH.floor + 0.5);
 
   const culler = new Culler(scene);
   ensurePropTextures(scene, floor.biome, B, floor.props);
@@ -99,6 +170,16 @@ export function buildRegionView(scene, floor, floorNum) {
       culler.add(glow, gx - 32, gy - 24, gx + 32, gy + 24);
     }
   }
+  // Haces de luz: la bóveda de roca tiene grietas por donde se cuela un resplandor pálido.
+  const shaftKey = ensureShaftTexture(scene, B.lavaWater ? PAL.ember1 : PAL.bone1);
+  const shafts = (floor.shafts || []).map((c, i) => {
+    const x = c.x * TILE - 20;
+    const y = (c.y + 1) * TILE - 120;
+    const img = scene.add.image(x, y, shaftKey).setOrigin(0, 0).setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.overlay - 4);
+    img.phase = i * 1.7;
+    culler.add(img, x, y, x + 56, y + 120);
+    return img;
+  });
   const s = floor.stairs;
   scene.add.image(s.x * TILE + 8, s.y * TILE + 8, 'glow_cold').setBlendMode(Phaser.BlendModes.ADD).setDepth(DEPTH.overlay - 2);
 
@@ -117,6 +198,8 @@ export function buildRegionView(scene, floor, floorNum) {
     update(time, delta) {
       culler.update(delta);
       ambience.update(time, delta);
+      animator.update(delta);
+      for (const sh of shafts) if (sh.visible) sh.setAlpha(0.65 + 0.35 * Math.sin(time / 1400 + sh.phase));
     },
   };
 }

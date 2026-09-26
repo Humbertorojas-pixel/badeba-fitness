@@ -11,8 +11,9 @@ import { G } from './ground.js';
 export const FRAGMENT_CHANCE = 0.02;
 const LANDMARK_NAME = { coloso: 'El Coloso Arrodillado', arbol_ancestral: 'Árbol Ancestral', costillar: 'Costillar del Titán' };
 
+// Regiones enormes: el primer piso ya ocupa decenas de pantallas y crecen al descender.
 export function regionSize(depth) {
-  return { w: Math.min(160, 96 + depth * 8), h: Math.min(120, 72 + depth * 6) };
+  return { w: Math.min(184, 120 + depth * 8), h: Math.min(136, 90 + depth * 6) };
 }
 
 function tryGenerate(seed, depth, forceFragment) {
@@ -145,7 +146,7 @@ function tryGenerate(seed, depth, forceFragment) {
     return null;
   };
   const villages = [];
-  for (let i = 0; i < (w >= 128 ? 2 : 1); i++) {
+  for (let i = 0; i < (w >= 160 ? 3 : 2); i++) {
     const c = samplePoi(7, 0.7, 26);
     if (c) { villages.push(c); pois.push(c); }
   }
@@ -270,7 +271,30 @@ function tryGenerate(seed, depth, forceFragment) {
       i++;
     }
     f.zones.push({ name, kind: 'aldea', x: c.x, y: c.y, r: 9 });
+
+    // Huertos a las afueras, con su espantapájaros: la aldea vive de algo.
+    for (let k = 0, made = 0; k < 24 && made < 2; k++) {
+      const ang = rng.next() * Math.PI * 2;
+      const fw = rng.int(5, 7);
+      const fh = rng.int(3, 4);
+      const fx = Math.round(c.x + Math.cos(ang) * 11) - Math.floor(fw / 2);
+      const fy = Math.round(c.y + Math.sin(ang) * 9) - Math.floor(fh / 2);
+      let ok = true;
+      for (let yy = fy - 1; yy <= fy + fh && ok; yy++) {
+        for (let xx = fx - 1; xx <= fx + fw; xx++) {
+          if (!inside(xx, yy) || border(xx, yy) < 3 || occ[idx(xx, yy)] || gAt(xx, yy) !== G.GROUND) { ok = false; break; }
+        }
+      }
+      if (!ok) continue;
+      for (let yy = fy; yy < fy + fh; yy++) for (let xx = fx; xx < fx + fw; xx++) { ground[idx(xx, yy)] = G.FIELD; reserved[idx(xx, yy)] = 1; }
+      const sx = fx + Math.floor(fw / 2);
+      const sy = fy + Math.floor(fh / 2);
+      ground[idx(sx, sy)] = G.GROUND;
+      if (made === 0) place('espantapajaros', sx, sy);
+      made++;
+    }
   });
+  const villageNames = f.zones.filter((z) => z.kind === 'aldea');
 
   // 6. Monumento colosal: el jugador se mide contra algo muchas veces más grande que él.
   if (landmark) {
@@ -304,6 +328,7 @@ function tryGenerate(seed, depth, forceFragment) {
       }
     }
     f.inspect.push({ x: front.x, y: front.y - 1, text: LANDMARK_LORE[kind] });
+    f.guardSpot = front;
     f.zones.push({ name: LANDMARK_NAME[kind], kind: 'monumento', x: landmark.x, y: landmark.y - 3, r: 7 });
   }
 
@@ -311,6 +336,34 @@ function tryGenerate(seed, depth, forceFragment) {
   for (const s of shrines) {
     const k = biomeKey === 'ciudad' || biomeKey === 'necropolis' ? 'estatua' : 'pena';
     if (place(k, s.x - 1, s.y - 1)) f.inspect.push({ x: s.x, y: s.y - 1, text: lore.pick(LORE) });
+  }
+
+  // Carteles en los caminos: señalan aldeas y monumentos (orientarse en una región enorme).
+  const named = [...villageNames, ...f.zones.filter((z) => z.kind === 'monumento')];
+  const compass = (dx, dy) => {
+    const ns = Math.abs(dy) > Math.abs(dx) * 0.4 ? (dy < 0 ? 'norte' : 'sur') : '';
+    const ew = Math.abs(dx) > Math.abs(dy) * 0.4 ? (dx < 0 ? 'oeste' : 'este') : '';
+    const combo = { norteeste: 'noreste', norteoeste: 'noroeste', sureste: 'sureste', suroeste: 'suroeste' };
+    return ns && ew ? combo[ns + ew] : ns || ew;
+  };
+  const signSpots = [];
+  for (let i = 0; i < N; i++) {
+    if (ground[i] !== G.PATH) continue;
+    const c = cell(i);
+    const roads = N4.filter(([dx, dy]) => [G.PATH, G.BRIDGE, G.PAVED].includes(gAt(c.x + dx, c.y + dy))).length;
+    const nearVillage = villages.some((v) => Math.abs(dist(v, c) - 12) < 1.5);
+    if (roads >= 3 || nearVillage) signSpots.push(c);
+  }
+  const signs = [];
+  for (const c of rng.shuffle(signSpots)) {
+    if (signs.length >= 2 + villages.length * 2) break;
+    if (signs.some((q) => dist(q, c) < 16) || pois.some((p) => dist(p, c) < 5)) continue;
+    const spot = [[1, 0], [-1, 0], [0, -1], [0, 1]].map(([dx, dy]) => ({ x: c.x + dx, y: c.y + dy })).find((q) => free(q.x, q.y) && !reserved[idx(q.x, q.y)]);
+    if (!spot || !place('cartel', spot.x, spot.y)) continue;
+    const lines = named.filter((z) => dist(z, spot) > 8).sort((p, q) => dist(p, spot) - dist(q, spot)).slice(0, 3)
+      .map((z) => `${z.name}: al ${compass(z.x - spot.x, z.y - spot.y)}`);
+    f.inspect.push({ x: spot.x, y: spot.y, text: lines.length ? `El cartel dice: ${lines.join('. ')}.` : 'El cartel está en blanco, borrado por la humedad.' });
+    signs.push(spot);
   }
 
   // El Descenso: el pozo hacia el siguiente piso.
@@ -329,7 +382,8 @@ function tryGenerate(seed, depth, forceFragment) {
       const fv = moist(x, y) * 0.55 + forestNoise(x, y) * 0.45;
       if (fv > geo.forest && rng.chance(geo.treeDensity)) {
         if (occ[idx(x, y - 1)] || occ[idx(x + 1, y - 1)]) continue;
-        place(rng.pick(B.trees), x, y, rng.int(0, 2), { ignoreReserved: false });
+        const kind = B.rareTree && rng.chance(B.rareTree[1]) ? B.rareTree[0] : rng.pick(B.trees);
+        place(kind, x, y, rng.int(0, 2), { ignoreReserved: false });
       }
     }
   }
@@ -337,12 +391,14 @@ function tryGenerate(seed, depth, forceFragment) {
     if (ground[i] === G.GROUND && !occ[i] && !reserved[i] && grassNoise(i % w, Math.floor(i / w)) > geo.grass) grass[i] = 1;
   }
   const nearWater = (x, y) => N4.some(([dx, dy]) => gAt(x + dx, y + dy) === G.WATER);
+  const nearRock = (x, y) => [[0, -1], [-1, 0], [1, 0], [-1, -1], [1, -1]].some(([dx, dy]) => gAt(x + dx, y + dy) === G.ROCK);
   for (const [kind, rate, cond] of B.decor) {
     for (let i = 0; i < N; i++) {
       const x = i % w;
       const y = Math.floor(i / w);
       if (ground[i] !== G.GROUND || occ[i] || reserved[i] || grass[i]) continue;
       if (cond === 'orilla' && !nearWater(x, y)) continue;
+      if (cond === 'roca' && !nearRock(x, y)) continue;
       if (rng.chance(rate)) place(kind, x, y, rng.int(0, 1), { ignoreReserved: false });
     }
   }
@@ -356,6 +412,14 @@ function tryGenerate(seed, depth, forceFragment) {
       decal[idx(x, y)] = which + 1;
       return true;
     }, { skip: sys.skip });
+  }
+
+  // Haces de luz que se cuelan por grietas del techo del pozo, sobre claros abiertos.
+  f.shafts = [];
+  for (let t = 0; t < 400 && f.shafts.length < Math.floor(N / 1100); t++) {
+    const c = cell(rng.pick(main));
+    if (border(c.x, c.y) < 6 || openness(c, 3) < 0.85 || f.shafts.some((q) => dist(q, c) < 14)) continue;
+    f.shafts.push(c);
   }
 
   // Paredes: roca, agua (salvo puentes) y la base de cada elemento.
@@ -417,6 +481,24 @@ function tryGenerate(seed, depth, forceFragment) {
     const id = `e${f.enemies.length}`;
     occ[k] = 1;
     f.enemies.push({ id, ...c, home: c, template: generateEnemyTemplate({ seed: hashSeed(seed, id), depth, biome: B }) });
+  }
+
+  // Guardián del monumento: un enemigo legendario que espera junto a él (no persigue).
+  if (f.guardSpot) {
+    const g = f.guardSpot;
+    const spots = [];
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) spots.push({ x: g.x + dx, y: g.y + dy });
+    spots.sort((p, q) => dist(p, g) - dist(q, g));
+    for (const c of spots) {
+      const k = idx(c.x, c.y);
+      if (!inside(c.x, c.y) || dist(c, g) < 2 || occ[k] || f.walls[k] || reach[k] < 0 || f.inspect.some((i) => i.x === c.x && i.y === c.y)) continue;
+      // Debe quedar al menos una casilla libre para rodearlo: nunca tapa el único paso.
+      if (N4.filter(([dx, dy]) => !f.walls[idx(c.x + dx, c.y + dy)]).length < 3) continue;
+      occ[k] = 1;
+      f.enemies.push({ id: 'guardian', ...c, home: c, passive: true, template: generateEnemyTemplate({ seed: hashSeed(seed, 'guardian'), depth, biome: B, rank: 'legendario' }) });
+      break;
+    }
+    delete f.guardSpot;
   }
 
   // Un ermitaño errante fuera de las aldeas.

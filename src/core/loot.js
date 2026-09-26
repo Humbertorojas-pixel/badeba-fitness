@@ -46,9 +46,9 @@ export function generateItem(rng, rarity, depth, slot = rng.pick(Object.keys(BAS
   const id = `it${Date.now().toString(36)}${(itemCounter++).toString(36)}${rng.int(0, 9999)}`;
   if (rarity === 'unico') {
     const u = rng.pick(UNIQUES);
-    return { id, kind: 'equip', slot: u.slot, rarity, name: u.name, mods: scaleMods(u.mods, depth), effect: u.effect, sync: rng.int(...SYNC_COST.unico), desc: u.desc };
+    return { id, kind: 'equip', slot: u.slot, rarity, name: u.name, look: u.look, mods: scaleMods(u.mods, depth), effect: u.effect, sync: rng.int(...SYNC_COST.unico), desc: u.desc };
   }
-  const base = rng.pick(BASES[slot]);
+  const base = rng.pick(BASES[slot].filter((b) => (b.minDepth || 1) <= depth));
   const mods = scaleMods(base.mods, depth);
   const g = base.gender === 'f' ? 1 : 0;
   let name = base.name;
@@ -65,16 +65,29 @@ export function generateItem(rng, rarity, depth, slot = rng.pick(Object.keys(BAS
   }
   for (const k of Object.keys(mods)) if (mods[k] === 0) delete mods[k];
   const sync = rarity === 'comun' ? 0 : rng.int(...SYNC_COST[rarity]);
-  return { id, kind: 'equip', slot, rarity, name, mods, effect, sync };
+  return { id, kind: 'equip', slot, rarity, name, look: base.look, mods, effect, sync };
 }
 
-// Botín que porta un enemigo: puede ser consumible, equipo o nada.
-export function rollEnemyLoot(rng, pity, depth, intelligence) {
+const TIER = ['comun', 'raro', 'legendario', 'unico'];
+const atLeast = (rarity, min) => (TIER.indexOf(rarity) >= TIER.indexOf(min) ? rarity : min);
+
+// Botín que porta un enemigo: puede ser consumible, equipo o nada. El rango del enemigo mejora
+// el botín sin romper la economía: los raros siempre llevan algo, los legendarios aceleran el
+// pity (doblan el destino) y solo un enemigo único garantiza un objeto legendario.
+export function rollEnemyLoot(rng, pity, depth, intelligence, rank = 'comun') {
   const r = rng.next();
-  if (r < 0.3) return null;
-  if (r < 0.62) return { kind: 'consumable', key: rng.chance(0.2 + depth * 0.02) ? 'pocion' : rng.chance(0.15) ? 'incienso' : 'tonico' };
-  const rarity = rollRarity(rng, pity, { intelligence });
-  return generateItem(rng, rarity, depth);
+  if (rank === 'comun') {
+    if (r < 0.3) return null;
+    if (r < 0.62) return { kind: 'consumable', key: rng.chance(0.2 + depth * 0.02) ? 'pocion' : rng.chance(0.15) ? 'incienso' : 'tonico' };
+    return generateItem(rng, rollRarity(rng, pity, { intelligence }), depth);
+  }
+  if (rank === 'raro' && r < 0.35) return { kind: 'consumable', key: rng.chance(0.5) ? 'pocion' : 'incienso' };
+  if (rank === 'legendario') {
+    pity.legendario += 20;
+    pity.unico += 10;
+  }
+  const rolled = rollRarity(rng, pity, { intelligence });
+  return generateItem(rng, atLeast(rolled, rank === 'unico' ? 'legendario' : 'raro'), depth);
 }
 
 export function itemDisplayName(item) {

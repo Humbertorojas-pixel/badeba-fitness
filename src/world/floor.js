@@ -1,6 +1,7 @@
-import { T, FRAGMENT_OFFSET } from '../gfx/tiles.js';
+import { T, FRAGMENT_OFFSET, INNER } from '../gfx/tiles.js';
 import { G } from './ground.js';
-import { maskAt } from './terrain.js';
+import { maskAt, valueNoise } from './terrain.js';
+import { createRng } from '../core/rng.js';
 
 export function isWall(floor, x, y) {
   if (x < 0 || y < 0 || x >= floor.w || y >= floor.h) return true;
@@ -21,6 +22,8 @@ export function computeTiles(floor) {
   const isRock = (x, y) => gAt(x, y) === G.ROCK;
   const watery = (x, y) => [G.WATER, G.BRIDGE, G.ROCK].includes(gAt(x, y));
   const pathy = (x, y) => [G.PATH, G.BRIDGE, G.PAVED].includes(gAt(x, y));
+  // Humor del suelo a gran escala (sombrío / normal / frondoso), estable por semilla del piso.
+  const mood = valueNoise(createRng(((floor.seed || 1) ^ 0x5eed) >>> 0), w, h, 9);
   const out = [];
   for (let y = 0; y < h; y++) {
     const row = [];
@@ -31,17 +34,25 @@ export function computeTiles(floor) {
       switch (ground[i]) {
         case G.ROCK:
           if (!isRock(x, y + 1)) {
-            tile = T.ROCK_FACE;
+            // Pared de dos casillas si hay roca encima: más alta y más imponente.
+            tile = isRock(x, y - 1) ? T.ROCK_FACE_LOW : T.ROCK_FACE;
             foreign = inFrag(x, y + 1);
+          } else if (!isRock(x, y + 2) && y + 2 < h) {
+            tile = T.ROCK_FACE_HI;
+            foreign = inFrag(x, y + 2);
           } else {
             let near = false;
             for (let dy = -2; dy <= 2 && !near; dy++) for (let dx = -2; dx <= 2; dx++) if (!isRock(x + dx, y + dy)) near = true;
-            tile = near ? T.ROCK_TOP : T.VOID;
+            tile = !near ? T.VOID : (x * 31 + y * 17) % 5 === 0 ? T.ROCK_TOP_ALT : T.ROCK_TOP;
           }
           break;
-        case G.WATER:
-          tile = T.WATER + maskAt(watery, x, y);
+        case G.WATER: {
+          const m = maskAt(watery, x, y);
+          const deep = m === 15 && watery(x - 1, y - 1) && watery(x + 1, y - 1) && watery(x - 1, y + 1) && watery(x + 1, y + 1)
+            && gAt(x, y - 2) === G.WATER && gAt(x, y + 2) === G.WATER && gAt(x - 2, y) === G.WATER && gAt(x + 2, y) === G.WATER;
+          tile = deep ? T.WATER_DEEP : T.WATER + m;
           break;
+        }
         case G.PATH:
           tile = T.PATH + maskAt(pathy, x, y);
           break;
@@ -51,12 +62,18 @@ export function computeTiles(floor) {
         case G.PAVED:
           tile = T.PAVED;
           break;
+        case G.FIELD:
+          tile = x % 2 ? T.FIELD_ALT : T.FIELD;
+          break;
         default:
           if (grass[i]) tile = T.TALL_GRASS;
           else if (decal[i]) tile = T.DECAL + decal[i] - 1;
+          else if (isRock(x, y - 1)) tile = T.GROUND_SHADE;
           else {
             const n = (x * 7349 + y * 2917) % 11;
-            tile = n < 7 ? T.GROUND : n < 10 ? T.GROUND + 1 : T.GROUND + 2;
+            const v = n < 7 ? 0 : n < 10 ? 1 : 2;
+            const m = mood(x, y);
+            tile = (m < 0.36 ? T.GROUND_DARK : m > 0.64 ? T.GROUND_LUSH : T.GROUND) + v;
           }
       }
       row.push(tile + (foreign ? FRAGMENT_OFFSET : 0));
@@ -64,6 +81,42 @@ export function computeTiles(floor) {
     out.push(row);
   }
   if (floor.stairs) out[floor.stairs.y][floor.stairs.x] = T.STAIRS;
+  return out;
+}
+
+// Capa superior: esquinas cóncavas de agua y caminos (-1 = vacío).
+export function computeOverlay(floor) {
+  const { w, h, ground } = floor;
+  const frag = floor.fragment?.cells;
+  const gAt = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? G.ROCK : ground[y * w + x]);
+  const watery = (x, y) => [G.WATER, G.BRIDGE, G.ROCK].includes(gAt(x, y));
+  const pathy = (x, y) => [G.PATH, G.BRIDGE, G.PAVED].includes(gAt(x, y));
+  const corners = (test, x, y) => {
+    let m = 0;
+    if (test(x, y - 1) && test(x - 1, y) && !test(x - 1, y - 1)) m |= INNER.NW;
+    if (test(x, y - 1) && test(x + 1, y) && !test(x + 1, y - 1)) m |= INNER.NE;
+    if (test(x, y + 1) && test(x - 1, y) && !test(x - 1, y + 1)) m |= INNER.SW;
+    if (test(x, y + 1) && test(x + 1, y) && !test(x + 1, y + 1)) m |= INNER.SE;
+    return m;
+  };
+  const out = [];
+  for (let y = 0; y < h; y++) {
+    const row = [];
+    for (let x = 0; x < w; x++) {
+      const g = ground[y * w + x];
+      let t = -1;
+      if (g === G.WATER) {
+        const m = corners(watery, x, y);
+        if (m) t = T.WATER_IN + m;
+      } else if (g === G.PATH) {
+        const m = corners(pathy, x, y);
+        if (m) t = T.PATH_IN + m;
+      }
+      if (t >= 0 && frag?.has(y * w + x)) t += FRAGMENT_OFFSET;
+      row.push(t);
+    }
+    out.push(row);
+  }
   return out;
 }
 

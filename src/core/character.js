@@ -1,4 +1,7 @@
 // Atributos manuales: Fuerza, Salud, Inteligencia, Maná. Todo lo demás se deriva.
+import { STARTER_GEAR } from '../data/items.js';
+import { RANKS } from '../world/enemyGen.js';
+
 export const ATTRS = ['fuerza', 'salud', 'inteligencia', 'mana'];
 export const ATTR_LABEL = { fuerza: 'Fuerza', salud: 'Salud', inteligencia: 'Intelig.', mana: 'Maná' };
 export const POINTS_PER_LEVEL = 3;
@@ -12,7 +15,7 @@ export function newPlayer() {
     xp: 0,
     points: 0,
     attrs: { fuerza: 10, salud: 5, inteligencia: 5, mana: 4 },
-    equipment: { arma: null, armadura: null, reliquia: null },
+    equipment: { arma: { ...STARTER_GEAR.arma }, armadura: { ...STARTER_GEAR.armadura }, reliquia: null },
     manaDrain: 0,
     moves: ['tajo', 'embestida', 'guardia'],
   };
@@ -120,5 +123,5 @@ export function allocate(p, attr) {
 }
 
 export function xpReward(template) {
-  return Math.round(6 + template.level * 4 + template.maxHp * 0.3);
+  return Math.round((6 + template.level * 4 + template.maxHp * 0.3) * (RANKS[template.rank]?.xp || 1));
 }

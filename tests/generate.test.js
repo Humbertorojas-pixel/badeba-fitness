@@ -25,10 +25,19 @@ describe('regiones procedurales', () => {
 
   it('las regiones son enormes frente a la pantalla (15×10 casillas visibles)', () => {
     const f = generateFloor({ runSeed: 3, depth: 1 });
-    expect(f.w * f.h).toBeGreaterThan(15 * 10 * 40);
+    expect(f.w * f.h).toBeGreaterThan(15 * 10 * 70);
     const far = generateFloor({ runSeed: 3, depth: 10 });
-    expect(far.w).toBe(160);
-    expect(far.h).toBe(120);
+    expect(far.w).toBe(184);
+    expect(far.h).toBe(136);
+  });
+
+  it('los caminos tienen carteles que señalan lugares con nombre', () => {
+    for (let s = 1; s <= 6; s++) {
+      const f = generateFloor({ runSeed: s, depth: 2 });
+      const signs = f.props.filter((p) => p.k === 'cartel');
+      expect(signs.length).toBeGreaterThan(0);
+      for (const sg of signs) expect(f.inspect.some((i) => i.x === sg.x && i.y === sg.y && i.text.startsWith('El cartel'))).toBe(true);
+    }
   });
 
   it('el piso 1 siempre es el Bosque de Raíces y tiene aldea con hoguera y aldeanos', () => {
