@@ -1,6 +1,7 @@
 import { MOVES } from '../data/moves.js';
 import { chooseEnemyAction } from '../core/battle.js';
 import { decide } from './client.js';
+import { natureOf } from '../world/enemyGen.js';
 
 const MOVE_HINT = {
   attack: (m) => `ataque de potencia ${m.power} y precisión ${Math.round(m.acc * 100)}%`,
@@ -27,7 +28,7 @@ export async function decideEnemyAction({ enemy, player, template, run }, rng) {
   options.huir = 'escapar del combate para sobrevivir';
   const answers = await decide(
     {
-      enemigo: { nombre: enemy.name, naturaleza: template.archetype, vida: pct(enemy), arma: template.loot?.name || 'ninguna' },
+      enemigo: { nombre: enemy.name, naturaleza: natureOf(template), vida: pct(enemy), arma: template.loot?.name || 'ninguna' },
       jugador: { vida: pct(player), nivel: run.player.level, codicia_que_despierta: greedLevel(run) },
     },
     { accion: { type: 'choice', instructions: '¿Qué acción conviene al enemigo para sobrevivir y herir al jugador?', criteria: options } },

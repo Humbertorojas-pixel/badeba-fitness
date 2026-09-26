@@ -114,6 +114,12 @@ export class PixelBuffer {
     return out;
   }
 
+  flipV() {
+    const out = new PixelBuffer(this.w, this.h);
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) out.px[y * this.w + x] = this.get(x, this.h - 1 - y);
+    return out;
+  }
+
   clone() {
     const out = new PixelBuffer(this.w, this.h);
     out.px = this.px.slice();

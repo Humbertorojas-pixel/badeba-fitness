@@ -12,6 +12,7 @@ import { getRun } from '../core/state.js';
 import { derive, equip } from '../core/character.js';
 import { describeItem, fit } from '../ui/itemText.js';
 import { ensureHeroTextures } from '../gfx/heroTextures.js';
+import { ensureItemIcon } from '../gfx/itemArt.js';
 
 const POCKETS = ['Consumibles', 'Equipo'];
 const SHORT_SLOT = { arma: 'Arma', armadura: 'Armad.', reliquia: 'Reliq.' };
@@ -35,6 +36,8 @@ export class Bag extends Phaser.Scene {
     this.pocketLabel = pixelText(this, 12, 10, '', 'box');
     // Vista previa: el personaje con lo que lleva puesto ahora mismo.
     this.hero = this.add.sprite(76, 106, ensureHeroTextures(this, this.run.player.equipment).key, 0).setOrigin(0.5, 1);
+    // Icono grande del objeto seleccionado.
+    this.icon = this.add.image(76, 50, '__DEFAULT').setVisible(false);
     this.sideText = [0, 1, 2, 3, 4].map((i) => pixelText(this, 12, 38 + i * 13, '', 'box'));
     this.rows = Array.from({ length: ROWS }, (_, i) => ({
       name: pixelText(this, 110, 13 + i * 16, '', 'box'),
@@ -87,6 +90,8 @@ export class Bag extends Phaser.Scene {
     this.sideText.forEach((t, i) => t.setText(side[i] || ''));
 
     const sel = list[this.index];
+    if (sel) this.icon.setTexture(ensureItemIcon(this, sel)).setVisible(true);
+    else this.icon.setVisible(false);
     const lines = sel ? wrap(describeItem(sel), 222) : ['Vacío.'];
     this.desc.forEach((t, i) => t.setText(lines[i] || ''));
   }

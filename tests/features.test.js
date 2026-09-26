@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { createRng } from '../src/core/rng.js';
 import { initialWeather, stepWeather, weatherOf, WEATHERS, BIOME_WEATHER } from '../src/world/weather.js';
-import { generateEnemyTemplate, rollEnemyRank, RANKS } from '../src/world/enemyGen.js';
+import { generateEnemyTemplate, rollEnemyRank, RANKS, natureOf } from '../src/world/enemyGen.js';
+import { MOVES } from '../src/data/moves.js';
+import { drawEquipIcon, drawItemIcon } from '../src/gfx/itemArt.js';
+import { itemMaterial } from '../src/data/items.js';
 import { BIOMES } from '../src/world/biomes.js';
 import { rollEnemyLoot, newPity, generateItem } from '../src/core/loot.js';
 import { itemLook, BASES } from '../src/data/items.js';
@@ -135,7 +138,11 @@ describe('criaturas por anatomía', () => {
     humanoid: ['penitente', 'verdugo', 'ahorcado', 'flagelante', 'monja'],
     wraith: ['sombra', 'lamento', 'espectro', 'planidera', 'eco'],
     crawler: ['reptante', 'tejedor', 'roedor', 'larva', 'arana'],
+    eldritch: ['engendro', 'profundo', 'ojo', 'heraldo', 'fungoide'],
+    ito: ['caracol', 'cabeza_colgante', 'cabellera', 'sonriente', 'alargado', 'pez_andante'],
+    undead: ['esqueleto', 'necrofago', 'vampiro', 'momia', 'liche'],
   };
+  forms.beast.push('licantropo', 'gargola');
   it('cada forma produce una silueta sustancial en combate y en el mapa', () => {
     for (const [archetype, list] of Object.entries(forms)) {
       for (const form of list) {
@@ -147,9 +154,54 @@ describe('criaturas por anatomía', () => {
     }
   });
 
+  it('el botín se ve en la criatura: arma, armadura o reliquia', () => {
+    for (const archetype of ['beast', 'humanoid', 'wraith', 'eldritch', 'ito', 'undead']) {
+      const base = generateMonster({ seed: 5, size: 64, archetype, ramp: 'rot' }).buffer;
+      for (const loot of [{ slot: 'arma', look: 'espada', mat: 'legendario' }, { slot: 'armadura', look: 'placas', mat: 'divino' }, { slot: 'reliquia', look: 'amuleto', mat: 'infernal' }]) {
+        expect(generateMonster({ seed: 5, size: 64, archetype, ramp: 'rot', loot }).buffer.px).not.toEqual(base.px);
+        expect(generateMonster({ seed: 5, size: 24, archetype, ramp: 'rot', loot }).buffer.count()).toBeGreaterThan(40);
+      }
+    }
+  });
+
+  it('los nuevos horrores solo aparecen desde el piso 2 y tienen nombre y naturaleza', () => {
+    for (let s = 0; s < 300; s++) {
+      const t1 = generateEnemyTemplate({ seed: s, depth: 1, biome: BIOMES.pantano });
+      expect(['eldritch', 'ito']).not.toContain(t1.archetype);
+    }
+    const seen = new Set();
+    for (let s = 0; s < 400; s++) {
+      const t = generateEnemyTemplate({ seed: s, depth: 5, biome: BIOMES[['pantano', 'ciudad', 'necropolis'][s % 3]] });
+      seen.add(t.archetype);
+      expect(natureOf(t)).toBeTruthy();
+      expect(t.moves.every((m) => MOVES[m])).toBe(true);
+    }
+    for (const a of ['eldritch', 'ito', 'undead']) expect(seen.has(a)).toBe(true);
+  });
+
   it('el rango se nota en el sprite (cuernos, ojos o aura)', () => {
     const opts = { seed: 21, size: 64, archetype: 'beast', ramp: 'rot', form: 'mastin' };
     const common = generateMonster({ ...opts, rank: 'comun' }).buffer;
     for (const rank of ['legendario', 'unico']) expect(generateMonster({ ...opts, rank }).buffer.px).not.toEqual(common.px);
+  });
+});
+
+describe('iconos de objetos', () => {
+  it('la complejidad crece con la rareza y los únicos son divinos o infernales', () => {
+    for (const [slot, looks] of [['arma', ['daga', 'espada', 'maza', 'lanza', 'hacha', 'guadana', 'mandoble']], ['armadura', ['harapos', 'cuero', 'habito', 'cota', 'coraza', 'placas']], ['reliquia', ['amuleto', 'anillo', 'rosario', 'colgante', 'reloj', 'corazon']]]) {
+      for (const look of looks) {
+        const common = drawEquipIcon(slot, look, 'comun');
+        const divine = drawEquipIcon(slot, look, 'divino');
+        const infernal = drawEquipIcon(slot, look, 'infernal');
+        expect(common.count()).toBeGreaterThan(20);
+        expect(divine.count()).toBeGreaterThan(common.count());
+        expect(infernal.count()).toBeGreaterThan(common.count());
+        expect(divine.px).not.toEqual(infernal.px);
+      }
+    }
+    for (const key of ['tonico', 'pocion', 'incienso']) expect(drawItemIcon({ kind: 'consumable', key }).count()).toBeGreaterThan(20);
+    expect(itemMaterial({ rarity: 'unico', name: 'Lanza del Alba' })).toBe('divino');
+    expect(itemMaterial({ rarity: 'unico', name: 'Hoja del Eclipse' })).toBe('infernal');
+    expect(itemMaterial({ rarity: 'legendario' })).toBe('legendario');
   });
 });

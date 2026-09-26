@@ -46,7 +46,7 @@ export function generateItem(rng, rarity, depth, slot = rng.pick(Object.keys(BAS
   const id = `it${Date.now().toString(36)}${(itemCounter++).toString(36)}${rng.int(0, 9999)}`;
   if (rarity === 'unico') {
     const u = rng.pick(UNIQUES);
-    return { id, kind: 'equip', slot: u.slot, rarity, name: u.name, look: u.look, mods: scaleMods(u.mods, depth), effect: u.effect, sync: rng.int(...SYNC_COST.unico), desc: u.desc };
+    return { id, kind: 'equip', slot: u.slot, rarity, name: u.name, look: u.look, aura: u.aura, mods: scaleMods(u.mods, depth), effect: u.effect, sync: rng.int(...SYNC_COST.unico), desc: u.desc };
   }
   const base = rng.pick(BASES[slot].filter((b) => (b.minDepth || 1) <= depth));
   const mods = scaleMods(base.mods, depth);

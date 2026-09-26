@@ -1,6 +1,6 @@
 import { PixelBuffer, shadeLayer } from './pixelBuffer.js';
 import { PAL } from '../palette.js';
-import { itemLook } from '../data/items.js';
+import { itemLook, itemMaterial } from '../data/items.js';
 
 // Personaje compuesto por capas: la armadura y el arma equipadas se ven en el mapa y en combate,
 // y su rareza cambia el material (hierro, acero, acero ennegrecido con oro, metal sangrante).
@@ -12,6 +12,9 @@ export const MATERIALS = {
   raro: { metal: [PAL.steel0, PAL.steel1, PAL.steel2, PAL.steel3], trim: [PAL.steel2, PAL.steel3], blade: [PAL.steel0, PAL.steel2, PAL.steel3, PAL.bone2], glow: null },
   legendario: { metal: [PAL.ink, PAL.night, PAL.dusk, PAL.stone1], trim: [PAL.ember0, PAL.ember2], blade: [PAL.night, PAL.dusk, PAL.stone2, PAL.ember2], glow: PAL.ember2 },
   unico: { metal: [PAL.ink, PAL.blood0, PAL.blood1, PAL.blood2], trim: [PAL.blood2, PAL.blood3], blade: [PAL.blood0, PAL.blood1, PAL.blood3, PAL.ember2], glow: PAL.blood3 },
+  // Únicos divinos: oro blanco, luz y plumas. Únicos infernales: hierro negro, sangre y brasas.
+  divino: { metal: [PAL.ember0, PAL.ember1, PAL.bone1, PAL.bone2], trim: [PAL.ember1, PAL.ember2], blade: [PAL.bone0, PAL.bone1, PAL.bone2, PAL.ember2], glow: PAL.ember2 },
+  infernal: { metal: [PAL.ink, PAL.night, PAL.blood0, PAL.blood1], trim: [PAL.blood2, PAL.ember1], blade: [PAL.ink, PAL.blood0, PAL.blood2, PAL.ember1], glow: PAL.ember2 },
 };
 
 // Tela de acento (capas, tabardos) según la rareza de la armadura.
@@ -20,6 +23,8 @@ const ACCENT = {
   raro: [PAL.night, PAL.steel0, PAL.steel1, PAL.steel2],
   legendario: [PAL.ink, PAL.night, PAL.shade, PAL.dusk],
   unico: [PAL.blood0, PAL.blood1, PAL.blood2, PAL.blood3],
+  divino: [PAL.stone2, PAL.bone0, PAL.bone1, PAL.bone2],
+  infernal: [PAL.ink, PAL.blood0, PAL.blood1, PAL.blood2],
 };
 
 const ARMOR = {
@@ -42,9 +47,9 @@ const PANTS = [PAL.ink, PAL.night, PAL.shade, PAL.dusk];
 export function lookFromEquipment(eq = {}) {
   return {
     armor: itemLook(eq.armadura) || 'ninguna',
-    armorRarity: eq.armadura?.rarity || 'comun',
+    armorRarity: itemMaterial(eq.armadura),
     weapon: itemLook(eq.arma),
-    weaponRarity: eq.arma?.rarity || 'comun',
+    weaponRarity: itemMaterial(eq.arma),
   };
 }
 
@@ -60,8 +65,11 @@ function resolve(look) {
   const accent = c.accent || ACCENT[ar];
   const cloth = c.cloth || {
     tunic: A.rags ? [PAL.rust0, PAL.rust0, PAL.rust1, PAL.rust2] : [PAL.stone1, PAL.bone0, PAL.bone1, PAL.bone2],
-    leather: [PAL.rust0, PAL.rust1, PAL.rust2, PAL.ember0],
-    robe: { comun: [PAL.ink, PAL.night, PAL.shade, PAL.dusk], raro: [PAL.night, PAL.steel0, PAL.steel1, PAL.steel2], legendario: [PAL.ink, PAL.night, PAL.shade, PAL.dusk], unico: [PAL.blood0, PAL.blood0, PAL.blood1, PAL.blood2] }[ar],
+    leather: { divino: [PAL.ember0, PAL.rust2, PAL.bone0, PAL.bone1], infernal: [PAL.ink, PAL.blood0, PAL.rust0, PAL.blood1] }[ar] || [PAL.rust0, PAL.rust1, PAL.rust2, PAL.ember0],
+    robe: {
+      comun: [PAL.ink, PAL.night, PAL.shade, PAL.dusk], raro: [PAL.night, PAL.steel0, PAL.steel1, PAL.steel2], legendario: [PAL.ink, PAL.night, PAL.shade, PAL.dusk],
+      unico: [PAL.blood0, PAL.blood0, PAL.blood1, PAL.blood2], divino: [PAL.stone2, PAL.bone0, PAL.bone1, PAL.bone2], infernal: [PAL.ink, PAL.blood0, PAL.blood0, PAL.blood1],
+    }[ar],
     chain: M.metal,
     plate: M.metal,
   }[A.body];
@@ -79,8 +87,9 @@ function resolve(look) {
     boots: LEATHER,
     glow: M.glow,
   };
-  const WM = MATERIALS[look.weaponRarity || 'comun'];
-  return { A, P, W: look.weapon, WM, rarity: ar };
+  const wkey = look.weaponRarity || 'comun';
+  const WM = MATERIALS[wkey];
+  return { A, P, W: look.weapon, WM, wkey, rarity: ar };
 }
 
 // Silueta plana sombreada por bandas (luz arriba-izquierda), pegada sobre `out`.
@@ -105,7 +114,13 @@ function owWeapon(b, L, view, layer) {
   if (!kind) return;
   const blade = WM.blade;
   const metal = WM.metal;
-  const glow = (x, y) => { if (WM.glow) b.set(x, y, WM.glow); };
+  // Brillo del material: gema (legendario), destello blanco (divino) o brasa (infernal).
+  const glow = (x, y) => {
+    if (!WM.glow) return;
+    b.set(x, y, WM.glow);
+    if (L.wkey === 'divino') b.set(x + 1, y, PAL.bone2).set(x, y - 1, PAL.bone2);
+    if (L.wkey === 'infernal') b.set(x + 1, y + 1, PAL.blood3).set(x - 1, y, PAL.ember1);
+  };
   if (view === 'down') {
     if (layer === 'back') {
       if (kind === 'espada') {
@@ -352,14 +367,57 @@ function owCapeBehind(b, L) {
   shade(b, P.cloak, (l) => l.poly([[6, 19], [17, 19], [19, 27], ...(A.cape === 'tattered' ? zig(4, 19, 29, 2) : [[19, 29], [4, 29]]), [4, 27]], '#'), 1);
 }
 
+const FEATHER = [PAL.stone2, PAL.bone0, PAL.bone1, PAL.bone2];
+const HORN = [PAL.ink, PAL.night, PAL.shade, PAL.stone1];
+
+// Armadura divina: alas plegadas a la espalda (asoman a los lados en el mapa).
+function owWings(b, L, view) {
+  if (L.rarity !== 'divino') return;
+  shade(b, FEATHER, (l) => {
+    if (view === 'left') {
+      l.poly([[14, 17], [21, 9], [23, 14], [20, 24], [15, 22]], '#');
+      return;
+    }
+    l.poly([[7, 18], [1, 10], [0, 17], [2, 24], [7, 23]], '#');
+    l.poly([[16, 18], [22, 10], [23, 17], [21, 24], [16, 23]], '#');
+  }, 1);
+  if (view === 'left') b.line(17, 14, 21, 12, PAL.stone2).line(17, 18, 21, 17, PAL.stone2);
+  else for (const [x0, x1] of [[2, 6], [21, 17]]) b.line(x0, 15, x1, 19, PAL.stone2).line(x0, 19, x1, 22, PAL.stone2);
+}
+
+// Halo (divino) o cuernos (infernal) sobre la cabeza.
+function owCrown(b, L, view) {
+  if (L.rarity === 'divino') {
+    for (let x = 9; x <= 15; x++) b.set(x, 2, PAL.ember2).set(x, 4, x % 2 ? PAL.ember1 : PAL.ember2);
+    b.set(8, 3, PAL.ember2).set(16, 3, PAL.ember2).set(10, 2, PAL.bone2);
+  } else if (L.rarity === 'infernal') {
+    const horns = view === 'left' ? [[13, 8, 1], [9, 8, -1]] : [[8, 8, -1], [16, 8, 1]];
+    horns.forEach(([x, y, dir], i) => {
+      const ramp = view === 'left' && i === 1 ? [PAL.ink, PAL.ink, PAL.night, PAL.shade] : HORN;
+      shade(b, ramp, (l) => { for (let k = 0; k <= 1; k += 0.1) l.ellipse(x + dir * Math.sin(k * 1.8) * 3, y - k * 6, 1.3 - k * 0.8, 1.3 - k * 0.8, '#'); }, 1);
+      b.set(Math.round(x + dir * Math.sin(1.8) * 3), y - 6, PAL.ember1);
+    });
+  }
+}
+
+// Detalles de la armadura en el pecho: gema legendaria o grietas encendidas infernales.
+function owChest(b, L) {
+  if (L.rarity === 'legendario') b.set(11, 20, PAL.blood3).set(12, 20, PAL.blood2);
+  if (L.rarity === 'divino') b.set(11, 20, PAL.ember2).set(12, 20, PAL.ember2).set(11, 19, PAL.ember1).set(11, 21, PAL.ember1);
+  if (L.rarity === 'infernal') b.line(10, 19, 11, 22, PAL.ember1).set(13, 20, PAL.ember2).set(14, 21, PAL.ember1);
+}
+
 function drawDown(L, frame) {
   const b = new PixelBuffer(HERO_W, HERO_H);
+  owWings(b, L, 'down');
   owWeapon(b, L, 'down', 'back');
   owCapeBehind(b, L);
   owLegsFront(b, L, frame);
   owTorso(b, L, false);
+  owChest(b, L);
   owArms(b, L, frame, false);
   owHeadFront(b, L);
+  owCrown(b, L, 'down');
   owWeapon(b, L, 'down', 'front');
   return b.outline(PAL.ink);
 }
@@ -367,6 +425,7 @@ function drawDown(L, frame) {
 function drawUp(L, frame) {
   const b = new PixelBuffer(HERO_W, HERO_H);
   const { A, P } = L;
+  owWings(b, L, 'up');
   owLegsFront(b, L, frame);
   owTorso(b, L, true);
   owArms(b, L, frame, true);
@@ -376,12 +435,14 @@ function drawUp(L, frame) {
   }
   owWeapon(b, L, 'up', 'front');
   owHeadBack(b, L);
+  owCrown(b, L, 'up');
   return b.outline(PAL.ink);
 }
 
 function drawLeft(L, frame) {
   const b = new PixelBuffer(HERO_W, HERO_H);
   const { A, P } = L;
+  owWings(b, L, 'left');
   owWeapon(b, L, 'left', 'back');
   if (A.cape) {
     const f = frame === 0 ? 0 : 1;
@@ -441,6 +502,7 @@ function drawLeft(L, frame) {
     b.set(13, 8, P.hair[3]).set(14, 9, P.hair[3]);
     if (A.hood === 'down') shade(b, P.cloak, (l) => l.ellipse(13, 18.5, 4.5, 1.8, '#'), 1);
   }
+  owCrown(b, L, 'left');
   owWeapon(b, L, 'left', 'front');
   return b.outline(PAL.ink);
 }
@@ -584,6 +646,119 @@ function bbHair(out, P) {
   out.paste(shaded, 0, 0);
 }
 
+// Eje de la hoja de cada arma en combate: guarda → punta, y ancho aproximado.
+const BB_AXIS = {
+  mandoble: [[46.5, 15], [6, 61], 4], espada: [[56, 47], [61, 11], 2], daga: [[56.5, 47], [58, 34], 1.5],
+  lanza: [[56.5, 15], [56.5, 1], 2.5], hacha: [[55, 12], [62, 6], 3], maza: [[54, 13], [57, 4], 3], guadana: [[45, 5], [9, 18], 2.5],
+};
+
+function bbWeaponDecor(out, L) {
+  const kind = L.W;
+  const mat = L.wkey;
+  const axis = BB_AXIS[kind];
+  if (!axis || !['legendario', 'divino', 'infernal'].includes(mat)) return;
+  const [[gx, gy], [tx, ty], w] = axis;
+  const len = Math.hypot(tx - gx, ty - gy);
+  const dx = (tx - gx) / len;
+  const dy = (ty - gy) / len;
+  // Perpendicular hacia arriba (lado del lomo) y hacia abajo (filo).
+  let px = -dy;
+  let py = dx;
+  if (py > 0) { px = -px; py = -py; }
+  const on = (x, y) => { const c = out.get(Math.round(x), Math.round(y)); return c && c !== PAL.ink; };
+  if (mat === 'legendario') {
+    for (let t = 5; t < len - 3; t += 5) if (on(gx + dx * t, gy + dy * t)) out.set(Math.round(gx + dx * t), Math.round(gy + dy * t), PAL.ember2);
+    out.ellipse(gx, gy, 1.8, 1.8, PAL.blood3).set(Math.round(gx) - 1, Math.round(gy) - 1, PAL.bone2);
+  }
+  if (mat === 'divino') {
+    for (let t = 3; t < len - 2; t++) {
+      const x = gx + dx * t + px * (w * 0.55);
+      const y = gy + dy * t + py * (w * 0.55);
+      if (on(x, y)) out.set(Math.round(x), Math.round(y), PAL.bone2);
+    }
+    // Alas pequeñas en la guarda.
+    for (const side of [-1, 1]) {
+      shade(out, FEATHER, (l) => {
+        for (let i = 0; i < 3; i++) l.ellipse(gx + px * side * (4 + i * 2) - dx * i, gy + py * side * (4 + i * 2) - dy * i, 2.2, 2.2, '#');
+      }, 1);
+    }
+    for (const t of [len * 0.45, len * 0.85]) {
+      const x = Math.round(gx + dx * t + px * (w + 3));
+      const y = Math.round(gy + dy * t + py * (w + 3));
+      out.set(x, y, PAL.bone2).set(x - 1, y, PAL.ember2).set(x + 1, y, PAL.ember2).set(x, y - 1, PAL.ember2).set(x, y + 1, PAL.ember2);
+    }
+  }
+  if (mat === 'infernal') {
+    // Filo dentado, llamas que brotan del lomo y cuernos en la guarda.
+    for (let t = 4; t < len - 3; t += 3) {
+      const x = gx + dx * t - px * (w * 0.9);
+      const y = gy + dy * t - py * (w * 0.9);
+      if (on(x, y)) out.set(Math.round(x), Math.round(y), null);
+    }
+    for (let t = 6; t < len - 4; t += 6) {
+      const x0 = Math.round(gx + dx * t + px * (w + 0.5));
+      const y0 = Math.round(gy + dy * t + py * (w + 0.5));
+      const h = 3 + ((t / 6) % 2) * 2;
+      for (let i = 0; i < h; i++) out.set(x0 + (i % 2 ? 1 : 0), y0 - i, i === h - 1 ? PAL.ember2 : i > h / 2 ? PAL.ember1 : PAL.blood3);
+    }
+    for (const side of [-1, 1]) {
+      shade(out, HORN, (l) => { for (let k = 0; k <= 1; k += 0.1) l.ellipse(gx + px * side * (3 + k * 4) - dx * k * 5, gy + py * side * (3 + k * 4) - dy * k * 5, 1.8 - k * 1.2, 1.8 - k * 1.2, '#'); }, 1);
+    }
+  }
+}
+
+// Alas de la armadura divina: plegadas a la espalda, asoman por encima de los hombros.
+function bbWings(out, L) {
+  if (L.rarity !== 'divino') return;
+  for (const flip of [false, true]) {
+    const w = new PixelBuffer(64, 64).poly([[26, 34], [16, 22], [6, 6], [1, 12], [0, 28], [3, 44], [10, 52], [20, 46]], '#');
+    const sh = shadeLayer(flip ? w.flipH() : w, FEATHER, { shadowDepth: 3 });
+    const sx = (x) => (flip ? 63 - x : x);
+    for (const [x0, y0, x1, y1] of [[22, 36, 3, 18], [20, 40, 2, 30], [18, 44, 5, 42], [24, 32, 8, 10]]) sh.line(sx(x0), y0, sx(x1), y1, PAL.stone2);
+    out.paste(sh, 0, 0);
+  }
+}
+
+// Halo (divino) o cuernos (infernal) sobre la cabeza.
+function bbCrown(out, L) {
+  if (L.rarity === 'divino') {
+    for (let a = 0; a < Math.PI * 2; a += 0.03) {
+      const x = Math.round(32 + Math.cos(a) * 10);
+      const y = Math.round(3 + Math.sin(a) * 2.6);
+      out.set(x, y, a > Math.PI ? PAL.ember2 : PAL.ember1);
+    }
+    out.set(26, 1, PAL.bone2).set(27, 1, PAL.bone2);
+  } else if (L.rarity === 'infernal') {
+    for (const dir of [-1, 1]) {
+      shade(out, HORN, (l) => {
+        for (let k = 0; k <= 1; k += 0.04) l.ellipse(32 + dir * (8 + Math.sin(k * 2.2) * 12), 16 - k * 16 + Math.sin(k * 3) * 2, 3.2 - k * 2.6, 3.2 - k * 2.6, '#');
+      }, 2);
+      out.set(Math.round(32 + dir * (8 + Math.sin(2.2) * 12)), 0, PAL.ember1);
+    }
+  }
+}
+
+// Detalles de la armadura en la espalda según el material.
+function bbArmorDecor(out, L) {
+  const { A } = L;
+  if (L.rarity === 'legendario') {
+    out.ellipse(32, 46, 2.4, 2.4, PAL.ink).ellipse(32, 46, 1.6, 1.6, PAL.blood3).set(31, 45, PAL.bone2);
+  }
+  if (L.rarity === 'divino') {
+    out.line(32, 40, 32, 52, PAL.ember2).line(28, 44, 36, 44, PAL.ember2);
+  }
+  if (L.rarity === 'infernal') {
+    for (const [x0, y0, x1, y1] of [[18, 42, 22, 52], [22, 52, 20, 58], [44, 40, 41, 49], [41, 49, 45, 56], [30, 48, 34, 54]]) out.line(x0, y0, x1, y1, PAL.ember1);
+    out.set(22, 52, PAL.ember2).set(41, 49, PAL.ember2);
+    // Brasas en el borde de la capa o del hábito.
+    for (let x = 3; x < 62; x += 5) {
+      const h = 3 + (x % 3);
+      for (let i = 0; i < h; i++) out.set(x + (i % 2), 63 - i, i === h - 1 ? PAL.ember2 : i > 1 ? PAL.ember1 : PAL.blood3);
+    }
+    if (A.pauldrons) for (const [x, y] of [[8, 29], [14, 26], [20, 26]]) for (const sx of [x, 63 - x]) shade(out, HORN, (l) => l.poly([[sx - 2, y + 2], [sx + 2, y + 2], [sx, y - 4]], '#'), 1);
+  }
+}
+
 export function buildHeroBack(look) {
   const L = resolve(look);
   const { A, P, W: kind } = L;
@@ -591,6 +766,7 @@ export function buildHeroBack(look) {
   const hand = HAND[kind];
   const arm = sleeveRamp(L);
   const skinHand = A.body === 'plate' ? P.metal : [P.skin[0], P.skin[0], P.skin[2], P.skin[3]];
+  bbWings(out, L);
   bbWeapon(out, L, 'behind');
 
   // Brazos a los costados (el derecho sostiene el arma si es de mano).
@@ -637,7 +813,7 @@ export function buildHeroBack(look) {
       for (const [x, y] of [[18, 50], [40, 47], [30, 58], [50, 55]]) out.ellipse(x, y, 1.5, 1.2, PAL.ink);
       out.rect(24, 44, 5, 4, PAL.rust1).rect(24, 44, 5, 1, PAL.rust2);
     }
-    if (L.rarity === 'legendario' || L.rarity === 'unico') out.line(1, 63, 4, 42, P.trim[1]).line(63, 63, 60, 42, P.trim[1]);
+    if (['legendario', 'unico', 'divino', 'infernal'].includes(L.rarity)) out.line(1, 63, 4, 42, P.trim[1]).line(63, 63, 60, 42, P.trim[1]);
   }
   if (hand) {
     rightArm();
@@ -676,7 +852,10 @@ export function buildHeroBack(look) {
     bbHair(out, P);
   }
 
+  bbArmorDecor(out, L);
+  bbCrown(out, L);
   bbWeapon(out, L, 'front');
+  bbWeaponDecor(out, L);
   return out.outline(PAL.ink);
 }
 

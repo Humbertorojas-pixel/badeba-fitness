@@ -24,7 +24,10 @@ import { fit } from '../ui/itemText.js';
 import { MOVES } from '../data/moves.js';
 import { CONSUMABLES, RARITY_LABEL } from '../data/items.js';
 import { weatherOf } from '../world/weather.js';
+import { natureOf } from '../world/enemyGen.js';
 import { WeatherView } from '../gfx/weatherView.js';
+import { ensureItemIcon } from '../gfx/itemArt.js';
+import { itemMaterial } from '../data/items.js';
 
 const ENEMY_BASE = { x: 176, y: 70 };
 const PLAYER_BASE = { x: 64, y: 112 };
@@ -226,15 +229,40 @@ export class Battle extends Phaser.Scene {
     const loot = this.template.loot;
     if (loot?.kind === 'equip' && loot.rarity !== 'comun') {
       if (loot.rarity !== 'raro') audio.sfx('encounter');
-      await this.say(`¡Empuña ${loot.name}! (${RARITY_LABEL[loot.rarity]})`);
-      if (loot.rarity === 'legendario') await this.say('Un arma de las que solo existen en los mitos de los muertos.');
-      if (loot.rarity === 'unico') await this.say('El aire se dobla a su alrededor. Ese objeto no obedece las leyes de este mundo.');
+      const card = this.showItem(loot, ENEMY_BASE.x - 33, ENEMY_BASE.y - 42);
+      const verb = loot.slot === 'arma' ? 'Empuña' : loot.slot === 'armadura' ? 'Viste' : 'Lleva';
+      await this.say(`¡${verb} ${loot.name}! (${RARITY_LABEL[loot.rarity]})`);
+      if (loot.rarity === 'legendario') await this.say('Un objeto de los que solo existen en los mitos de los muertos.');
+      if (loot.rarity === 'unico') {
+        await this.say(itemMaterial(loot) === 'divino'
+          ? 'Brilla con una luz que no pertenece a este pozo. Algo divino, caído hasta aquí.'
+          : 'Arde sin quemarse y susurra en una lengua que no quieres entender. Algo infernal.');
+      }
+      card.destroy();
     }
     const t = this.template;
-    const spoken = await bark({ name: t.name, archetype: t.archetype, item: loot?.kind === 'equip' ? loot.name : null }, { piso: this.run.floor, codicia: greedLevel(this.run) }, 'inicio del combate');
+    const spoken = await bark({ name: t.name, archetype: natureOf(t), item: loot?.kind === 'equip' ? loot.name : null }, { piso: this.run.floor, codicia: greedLevel(this.run) }, 'inicio del combate');
     await this.say(spoken ? `«${spoken}»` : pickBark(this.rng, BARKS.intro[t.archetype] || BARKS.intro.beast));
     if (['altísima', 'obsesiva'].includes(greedLevel(this.run))) await this.say(pickBark(this.rng, BARKS.greed));
     this.playerPanel.c.setVisible(true);
+  }
+
+  // Tarjeta con el icono de un objeto (lo que empuña el enemigo o lo que suelta).
+  showItem(item, x, y, pop = false) {
+    const c = this.add.container(x, y).setDepth(DEPTH.ui + 3);
+    const mat = item.kind === 'equip' ? itemMaterial(item) : 'comun';
+    if (['legendario', 'divino', 'infernal'].includes(mat)) {
+      const glow = this.add.image(0, 0, mat === 'infernal' ? 'aura_unico' : 'aura_legendario').setBlendMode(Phaser.BlendModes.ADD).setScale(0.5);
+      c.add(glow);
+      this.tweens.add({ targets: glow, alpha: 0.4, duration: 600, yoyo: true, repeat: -1 });
+    }
+    c.add(drawBox(this.add.graphics(), -17, -17, 34, 34));
+    c.add(this.add.image(0, 0, ensureItemIcon(this, item)));
+    if (pop) {
+      c.setScale(0.2);
+      this.tweens.add({ targets: c, scale: 1, y: y - 14, duration: 380, ease: 'Back.out' });
+    }
+    return c;
   }
 
   // Respiración: el enemigo sube y baja un píxel; los espectros flotan.
@@ -294,7 +322,7 @@ export class Battle extends Phaser.Scene {
     this.textbox.show(`${this.enemy.name} escucha...`);
     const res = await talk({
       mode: 'negotiate',
-      enemy: { name: t.name, archetype: t.archetype, item: t.loot?.kind === 'equip' ? t.loot.name : null },
+      enemy: { name: t.name, archetype: natureOf(t), item: t.loot?.kind === 'equip' ? t.loot.name : null },
       context: { inteligencia: intelligence, codicia: greed, piso: this.run.floor },
       history: [],
       message: text,
@@ -438,7 +466,9 @@ export class Battle extends Phaser.Scene {
     else run.bag.gear.push(loot);
     if (loot.kind === 'equip' && loot.rarity !== 'comun' && loot.rarity !== 'raro') audio.sfx('encounter');
     const tag = loot.kind === 'equip' ? ` (${RARITY_LABEL[loot.rarity]})` : '';
+    const card = this.showItem(loot, ENEMY_BASE.x, ENEMY_BASE.y - 20, true);
     await this.say(`${this.enemy.name} deja caer ${itemDisplayName(loot)}${tag}.`);
+    card.destroy();
   }
 
   async finish(outcome) {

@@ -2,7 +2,7 @@ import { createRng } from '../core/rng.js';
 
 const ARCH = {
   beast: {
-    nouns: [['Carroñero', 'm'], ['Mastín', 'm'], ['Devorador', 'm'], ['Bestia', 'f'], ['Hiena', 'f']],
+    nouns: [['Carroñero', 'm'], ['Mastín', 'm'], ['Devorador', 'm'], ['Bestia', 'f'], ['Hiena', 'f'], ['Licántropo', 'm'], ['Gárgola', 'f']],
     base: { maxHp: 24, str: 8, def: 4, spd: 7 }, moves: ['garra', 'mordida'],
   },
   humanoid: {
@@ -17,7 +17,34 @@ const ARCH = {
     nouns: [['Reptante', 'm'], ['Tejedor', 'm'], ['Roedor', 'm'], ['Larva', 'f'], ['Araña', 'f']],
     base: { maxHp: 18, str: 7, def: 3, spd: 9 }, moves: ['picadura', 'mordida'],
   },
+  // Horrores cósmicos: tentáculos, ojos que no deberían existir, voces que drenan la mente.
+  eldritch: {
+    nouns: [['Engendro', 'm'], ['Profundo', 'm'], ['Ojo', 'm'], ['Heraldo', 'm'], ['Fungoide', 'm']],
+    adjs: [['abisal', 'abisal'], ['innombrable', 'innombrable'], ['primigenio', 'primigenia'], ['estelar', 'estelar'], ['sin forma', 'sin forma']],
+    base: { maxHp: 30, str: 10, def: 5, spd: 6 }, moves: ['tentaculo', 'susurro'], minDepth: 2,
+  },
+  // Pesadillas deformes (tinta y espirales): cuerpos que la obsesión estiró y retorció.
+  ito: {
+    nouns: [['Caracol', 'm'], ['Cabeza colgante', 'f', true], ['Cabellera', 'f'], ['Sonriente', 'm'], ['Alargado', 'm'], ['Pez andante', 'm', true]],
+    adjs: [['en espiral', 'en espiral'], ['hambriento', 'hambrienta'], ['que te mira', 'que te mira'], ['sin párpados', 'sin párpados']],
+    base: { maxHp: 26, str: 9, def: 4, spd: 8 }, moves: ['espiral', 'mordida'], minDepth: 2,
+  },
+  // No-muertos clásicos.
+  undead: {
+    nouns: [['Esqueleto', 'm'], ['Necrófago', 'm'], ['Vampiro', 'm'], ['Momia', 'f'], ['Liche', 'm']],
+    base: { maxHp: 28, str: 9, def: 6, spd: 5 }, moves: ['garra', 'mordida'],
+  },
 };
+
+// Naturaleza legible para la IA (va en los prompts y en las decisiones de Laya).
+const NATURE = {
+  beast: 'bestia', humanoid: 'humanoide corrompido', wraith: 'espectro', crawler: 'alimaña',
+  eldritch: 'horror cósmico', ito: 'pesadilla deforme', undead: 'no-muerto',
+};
+export function natureOf(template) {
+  const base = NATURE[template.archetype] || template.archetype;
+  return template.form ? `${base} (${template.form.replace(/_/g, ' ')})` : base;
+}
 
 // Epíteto por paleta [masculino, femenino] + ajuste de stats.
 const RAMP_TRAITS = {
@@ -39,7 +66,7 @@ export const RANKS = {
 export const RANK_ORDER = ['comun', 'raro', 'legendario', 'unico'];
 
 // Movimiento de firma de los enemigos legendarios y únicos.
-const SIGNATURE = { beast: 'desgarro', humanoid: 'ejecucion', wraith: 'alarido', crawler: 'enjambre' };
+const SIGNATURE = { beast: 'desgarro', humanoid: 'ejecucion', wraith: 'alarido', crawler: 'enjambre', eldritch: 'abismo', ito: 'pesadilla', undead: 'maldicion' };
 
 // Nombres propios: los legendarios se ganan uno, los únicos son criaturas de leyenda.
 const PROPER = ['Vargoth', 'Ismera', 'Kalden', 'Oruth', 'Selvane', 'Druhm', 'Mireth', 'Galvor', 'Yssa', 'Torvek', 'Ashka', 'Brennoc'];
@@ -48,11 +75,14 @@ const UNIQUE_FOES = {
   humanoid: [['El Verdugo Sin Rostro', 'steel', 'verdugo'], ['El Rey Mendigo', 'rust', 'penitente']],
   wraith: [['La Novia Ahogada', 'bone', 'planidera'], ['El Coro de los Mil', 'void', 'eco']],
   crawler: [['La Madre Larva', 'rot', 'larva'], ['El Tejedor de Carne', 'flesh', 'tejedor']],
+  eldritch: [['El Que Sueña Bajo el Pozo', 'void', 'heraldo'], ['El Ojo Que Todo lo Olvida', 'flesh', 'ojo']],
+  ito: [['La Espiral Infinita', 'bone', 'caracol'], ['El Rostro en el Cielo', 'bone', 'cabeza_colgante']],
+  undead: [['El Conde de las Cenizas', 'flesh', 'vampiro'], ['El Rey Liche', 'void', 'liche']],
 };
 
 // Forma visual a partir del sustantivo (el sprite coincide con el nombre).
 export function formOf(noun) {
-  return noun.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace('ñ', 'n');
+  return noun.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace('ñ', 'n').replace(/ /g, '_');
 }
 
 export function rollEnemyRank(rng, depth, { allowUnique = true } = {}) {
@@ -79,13 +109,16 @@ function weightedPick(rng, weights) {
 // `rank` fuerza el rango (guardianes); si no, se tira con la semilla del enemigo (determinista).
 export function generateEnemyTemplate({ seed, depth, biome, foreign = false, rank = null, allowUnique = true }) {
   const rng = createRng(seed);
-  const archetype = weightedPick(rng, biome.archetypes);
+  const allowed = Object.fromEntries(Object.entries(biome.archetypes).filter(([k]) => ARCH[k] && (ARCH[k].minDepth || 1) <= depth));
+  const archetype = weightedPick(rng, Object.keys(allowed).length ? allowed : { beast: 1 });
   let ramp = rng.pick(biome.ramps);
   const def = ARCH[archetype];
-  const [noun, gender] = rng.pick(def.nouns);
+  const [noun, gender, fixedName] = rng.pick(def.nouns);
   const rolled = rollEnemyRank(rng.fork('rank'), depth, { allowUnique });
   const tier = rank || rolled;
-  let name = foreign ? `${noun} ${gender === 'f' ? 'ajena' : 'ajeno'}` : `${noun} ${RAMP_TRAITS[ramp].adj[gender === 'f' ? 1 : 0]}`;
+  const g = gender === 'f' ? 1 : 0;
+  const adj = def.adjs ? rng.fork('adj').pick(def.adjs)[g] : RAMP_TRAITS[ramp].adj[g];
+  let name = foreign ? `${noun} ${g ? 'ajena' : 'ajeno'}` : fixedName ? noun : `${noun} ${adj}`;
   let article = gender === 'f' ? 'Una' : 'Un';
   let title = null;
   let form = formOf(noun);

@@ -50,14 +50,19 @@ export const AFFIXES = [
 // Títulos de legendarios (se nombran como mitos).
 export const LEGEND_TITLES = ['del Rey Sin Trono', 'de la Última Vigilia', 'del Halcón Caído', 'de la Marca', 'del Pozo', 'de los Mil Ecos'];
 
-// Únicos: rompen las reglas del juego.
+// Únicos: rompen las reglas del juego. Su `aura` decide su diseño: divino (oro blanco, halos,
+// alas) o infernal (hierro negro, cuernos, brasas).
 export const UNIQUES = [
-  { name: 'Hoja del Eclipse', slot: 'arma', look: 'mandoble', mods: { atk: 7 }, effect: 'doubleStrike', desc: 'Cada ataque golpea dos veces.' },
-  { name: 'Guadaña del Barquero', slot: 'arma', look: 'guadana', mods: { atk: 6, int: 3 }, effect: 'lifesteal', desc: 'Siega la vida y te la entrega.' },
-  { name: 'Espejo sin Reflejo', slot: 'armadura', look: 'placas', mods: { def: 4 }, effect: 'reflect', desc: 'Devuelve parte del daño recibido.' },
-  { name: 'Piel del Titán', slot: 'armadura', look: 'cuero', mods: { def: 6, hp: 15 }, effect: 'reflect', desc: 'Cuero que aún recuerda al gigante.' },
-  { name: 'Reloj sin Agujas', slot: 'reliquia', mods: { spd: 4 }, effect: 'alwaysFirst', desc: 'Siempre actúas primero.' },
-  { name: 'Corazón de Brasa', slot: 'reliquia', mods: { hp: 20 }, effect: 'lifesteal', desc: 'Tus golpes te devuelven vida.' },
+  { name: 'Hoja del Eclipse', slot: 'arma', look: 'mandoble', aura: 'infernal', mods: { atk: 7 }, effect: 'doubleStrike', desc: 'Cada ataque golpea dos veces.' },
+  { name: 'Guadaña del Barquero', slot: 'arma', look: 'guadana', aura: 'infernal', mods: { atk: 6, int: 3 }, effect: 'lifesteal', desc: 'Siega la vida y te la entrega.' },
+  { name: 'Lanza del Alba', slot: 'arma', look: 'lanza', aura: 'divino', mods: { atk: 6, spd: 3 }, effect: 'alwaysFirst', desc: 'Nadie es más rápido que la primera luz.' },
+  { name: 'Espada del Último Juramento', slot: 'arma', look: 'espada', aura: 'divino', mods: { atk: 6, hp: 10 }, effect: 'doubleStrike', desc: 'Cumple dos veces lo que prometes una.' },
+  { name: 'Espejo sin Reflejo', slot: 'armadura', look: 'placas', aura: 'divino', mods: { def: 4 }, effect: 'reflect', desc: 'Devuelve parte del daño recibido.' },
+  { name: 'Coraza del Serafín Caído', slot: 'armadura', look: 'coraza', aura: 'divino', mods: { def: 6, hp: 8 }, effect: 'reflect', desc: 'Aún cree que puede volar.' },
+  { name: 'Piel del Titán', slot: 'armadura', look: 'cuero', aura: 'infernal', mods: { def: 6, hp: 15 }, effect: 'reflect', desc: 'Cuero que aún recuerda al gigante.' },
+  { name: 'Hábito del Obispo Hueco', slot: 'armadura', look: 'habito', aura: 'infernal', mods: { def: 3, int: 4, mana: 4 }, effect: 'lifesteal', desc: 'Debajo no hay nadie. Solo hambre.' },
+  { name: 'Reloj sin Agujas', slot: 'reliquia', aura: 'divino', mods: { spd: 4 }, effect: 'alwaysFirst', desc: 'Siempre actúas primero.' },
+  { name: 'Corazón de Brasa', slot: 'reliquia', aura: 'infernal', mods: { hp: 20 }, effect: 'lifesteal', desc: 'Tus golpes te devuelven vida.' },
 ];
 
 export const SYNC_COST = { comun: 0, raro: [3, 5], legendario: [8, 11], unico: [14, 16] };
@@ -78,6 +83,13 @@ export const EFFECT_DESC = {
 export const MOD_LABEL = { atk: 'ATQ', def: 'DEF', spd: 'VEL', hp: 'PS', int: 'INT', mana: 'MANÁ', acc: 'PREC' };
 
 const DEFAULT_LOOK = { arma: 'espada', armadura: 'harapos' };
+
+// Material visual de un ítem: la rareza, y en los únicos su aura (divino o infernal).
+export function itemMaterial(item) {
+  if (!item) return 'comun';
+  if (item.rarity !== 'unico') return item.rarity || 'comun';
+  return item.aura || UNIQUES.find((u) => u.name === item.name)?.aura || 'infernal';
+}
 
 // Aspecto de un ítem (los guardados antiguos no tenían `look`: se deduce del nombre).
 export function itemLook(item) {

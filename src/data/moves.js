@@ -11,5 +11,11 @@ export const MOVES = {
   ejecucion: { name: 'Ejecución', power: 18, acc: 0.75, kind: 'attack' },
   alarido: { name: 'Alarido', power: 13, acc: 1.0, kind: 'attack' },
   enjambre: { name: 'Enjambre', power: 14, acc: 0.9, kind: 'attack' },
+  tentaculo: { name: 'Tentáculo', power: 11, acc: 0.9, kind: 'attack' },
+  susurro: { name: 'Susurro', kind: 'drain', drain: 4 },
+  espiral: { name: 'Espiral', power: 10, acc: 1.0, kind: 'attack' },
+  abismo: { name: 'Mirada del Abismo', power: 17, acc: 0.85, kind: 'attack' },
+  pesadilla: { name: 'Pesadilla', power: 15, acc: 1.0, kind: 'attack' },
+  maldicion: { name: 'Maldición', power: 16, acc: 0.85, kind: 'attack' },
   succion: { name: 'Succión', kind: 'drain', drain: 5 },
 };
