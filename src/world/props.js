@@ -51,7 +51,22 @@ export const PROPS = {
   coloso: { w: 5, h: 8, fp: [...row(5, 0), ...row(5, 1)] },
   costilla: { w: 3, h: 6, fp: row(1), fpFlip: [[2, 0]] },
   craneo: { w: 4, h: 3, fp: [...row(4, 0), ...row(4, 1)] },
+  // Aldeas y caminos.
+  posada: { w: 5, h: 5, fp: [...row(5, 0), ...row(5, 1), ...row(5, 2)], door: [2, 0], smoke: [65, 0] },
+  puesto: { w: 2, h: 2, fp: row(2) },
+  torre: { w: 2, h: 5, fp: row(2), light: 'fuego' },
+  molino: { w: 3, h: 5, fp: [...row(3, 0), ...row(3, 1)], door: [1, 0] },
+  capilla: { w: 4, h: 5, fp: [...row(4, 0), ...row(4, 1), ...row(4, 2)], door: [2, 0] },
+  tienda: { w: 2, h: 2, fp: row(2) },
+  fogata: { w: 1, h: 1, fp: row(1) },
+  barril: { w: 1, h: 1, fp: row(1) },
+  cajas: { w: 1, h: 1, fp: row(1) },
+  lena: { w: 2, h: 1, fp: row(2) },
+  carreta: { w: 2, h: 2, fp: row(2) },
 };
+
+// Construcciones: en el mapa se pintan como tejados.
+export const BUILDINGS = new Set(['casa', 'posada', 'torre', 'molino', 'capilla']);
 
 export const TREE_KINDS = new Set(['arbol', 'pino', 'seco', 'sauce', 'hongo']);
 

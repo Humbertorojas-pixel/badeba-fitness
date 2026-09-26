@@ -30,6 +30,8 @@ import { generateDungeon } from '../world/dungeon.js';
 import { ensureItemIcon } from '../gfx/itemArt.js';
 import { itemDisplayName } from '../core/loot.js';
 import { RARITY_LABEL } from '../data/items.js';
+import { healParty, companionFromNpc, PARTY_MAX } from '../core/party.js';
+import { checkQuests } from '../world/quests.js';
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const OPPOSITE = { up: 'down', down: 'up', left: 'right', right: 'left' };
@@ -84,12 +86,14 @@ export class Overworld extends Phaser.Scene {
       });
 
     const pos = this.run.pos || floor.start;
+    this.questCheckOnCreate = true;
     this.tile = { x: pos.x, y: pos.y };
     this.facing = this.run.facing || 'down';
     this.hero = ensureHeroTextures(this, this.run.player.equipment);
     this.player = this.add.sprite(0, 0, this.hero.key, DIR_FRAME_BASE[this.facing]).setOrigin(0.5, 1);
     this.placePlayer();
     this.view.follow(this.player);
+    this.setupCompanions();
 
     const cam = this.cameras.main;
     cam.setBounds(0, 0, floor.w * TILE, floor.h * TILE);
@@ -125,6 +129,12 @@ export class Overworld extends Phaser.Scene {
       this.run.locationShown = this.run.floor;
       this.showLocation(`Piso ${this.run.floor} · ${floor.biomeName}`);
     }
+    this.refreshQuestMarks();
+    if (this.questCheckOnCreate) {
+      const done = checkQuests(this.run, this.run.floor, { defeated: this.run.defeated });
+      if (done.length) this.run.pendingMessage = `Misión cumplida. ${done[0].giver} te espera.`;
+      if (done.length) this.refreshQuestMarks();
+    }
     if (!this.run.introShown) {
       this.run.introShown = true;
       this.dialog('Despiertas bajo un cielo de roca. Un bosque entero crece aquí abajo, en la oscuridad del pozo.');
@@ -141,9 +151,69 @@ export class Overworld extends Phaser.Scene {
     const onResume = () => {
       this.busy = false;
       this.refreshHero();
+      if ((this.run.party || []).length !== this.companions.length || this.companions.some((m, i) => m.c !== this.run.party[i])) this.setupCompanions();
     };
     this.events.on('resume', onResume);
     this.events.once('shutdown', () => this.events.off('resume', onResume));
+  }
+
+  // Compañeros: te siguen en fila por las casillas que vas dejando.
+  setupCompanions() {
+    this.companions?.forEach((m) => m.sprite.destroy());
+    this.trail = [];
+    const free = (x, y) => !isBlocked(this.floor, x, y) && !this.enemyAt(x, y) && !this.npcAt(x, y);
+    const behind = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]]
+      .map(([dx, dy]) => ({ x: this.tile.x + dx, y: this.tile.y + dy })).filter((t) => free(t.x, t.y));
+    this.companions = (this.run.party || []).map((c, i) => {
+      const t = behind[i] || { ...this.tile };
+      this.trail.push(t);
+      const m = { c, sprite: this.makeCompanionSprite(c), tile: t };
+      this.placeCompanion(m);
+      return m;
+    });
+  }
+
+  makeCompanionSprite(c) {
+    if (c.kind === 'criatura') {
+      const tex = ensureMonsterTextures(this, c.id, c.template);
+      return this.add.sprite(0, 0, tex.small).setOrigin(0.5, 1).play(`${tex.small}_anim`);
+    }
+    const key = `npc_${c.palette}`;
+    for (const [dir, base] of Object.entries(DIR_FRAME_BASE)) {
+      const anim = `${key}_walk_${dir}`;
+      if (!this.anims.exists(anim)) this.anims.create({ key: anim, frames: [base + 1, base, base + 2, base].map((frame) => ({ key, frame })), frameRate: 10, repeat: -1 });
+    }
+    return this.add.sprite(0, 0, key, DIR_FRAME_BASE.down).setOrigin(0.5, 1);
+  }
+
+  placeCompanion(m) {
+    const off = m.c.kind === 'criatura' ? 15 : 16;
+    m.sprite.setPosition(m.tile.x * TILE + 8, m.tile.y * TILE + off).setDepth(DEPTH.entity + m.tile.y + 0.45);
+  }
+
+  moveCompanions(from, duration) {
+    if (!this.companions?.length) return;
+    this.trail.unshift({ ...from });
+    this.trail.length = this.companions.length;
+    this.companions.forEach((m, i) => {
+      const to = this.trail[i];
+      if (!to || (to.x === m.tile.x && to.y === m.tile.y)) return;
+      const dx = to.x - m.tile.x;
+      const dy = to.y - m.tile.y;
+      const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+      const off = m.c.kind === 'criatura' ? 15 : 16;
+      if (m.c.kind === 'npc') m.sprite.anims.play(`npc_${m.c.palette}_walk_${dir}`, true);
+      else m.sprite.setFlipX(dx > 0);
+      m.sprite.setDepth(DEPTH.entity + Math.max(m.tile.y, to.y) + 0.45);
+      m.tile = { ...to };
+      this.tweens.add({
+        targets: m.sprite, x: to.x * TILE + 8, y: to.y * TILE + off, duration,
+        onComplete: () => {
+          if (m.c.kind === 'npc') { m.sprite.anims.stop(); m.sprite.setFrame(DIR_FRAME_BASE[dir]); }
+          this.placeCompanion(m);
+        },
+      });
+    });
   }
 
   // Tras equipar o quitar algo en MOCHILA/ESTADO, el personaje cambia de aspecto.
@@ -161,7 +231,7 @@ export class Overworld extends Phaser.Scene {
     const rng = createRng(hashSeed(floor.seed, 'loot'));
     const intelligence = derive(this.run.player).int;
     const { pity } = getProfile(this);
-    for (const e of floor.enemies) e.template.loot = rollEnemyLoot(rng, pity, this.run.floor, intelligence, e.template.rank);
+    for (const e of floor.enemies) e.template.loot = e.template.friend ? null : rollEnemyLoot(rng, pity, this.run.floor, intelligence, e.template.rank);
     this.run.floorData = floor;
     this.run.pos = null;
     this.run.stepsSinceBattle = 0;
@@ -246,6 +316,7 @@ export class Overworld extends Phaser.Scene {
     const points = this.run.player.points;
     const items = [
       { label: 'MAPA', scene: 'MapView' },
+      { label: 'EQUIPO', scene: 'Party' },
       { label: 'MOCHILA', scene: 'Bag' },
       { label: points ? 'ESTADO +' : 'ESTADO', style: points ? 'unique' : 'box', scene: 'Status' },
       { label: 'GUARDAR' },
@@ -312,6 +383,7 @@ export class Overworld extends Phaser.Scene {
 
   update(time, delta) {
     this.view.update(time, delta);
+    for (const e of this.enemies) if (e.mark) e.mark.setPosition(e.sprite.x - 2, e.sprite.y - 34 - (Math.floor(time / 400) % 2));
     this.weather.update(time, delta);
     if (this.busy || this.moving) return;
     if (this.turnLock > 0) this.turnLock -= delta;
@@ -359,24 +431,63 @@ export class Overworld extends Phaser.Scene {
     const spot = this.floor.inspect.find((i) => i.x === x && i.y === y);
     if (!spot) return;
     audio.sfx('inspect');
+    if (spot.landmark && (this.run.quests || []).some((q) => q.status === 'activa' && q.type === 'peregrinar' && q.floor === this.run.floor)) {
+      this.pray(spot);
+      return;
+    }
     if (spot.action === 'hoguera') this.rest();
+    else if (spot.action === 'posada') this.rest(`${spot.text} La posadera te da una cama y un plato caliente.`, 'Descansas en la posada');
+    else if (spot.action === 'capilla') this.chapelPrayer(spot);
     else if (spot.action === 'mazmorra') this.askEnterDungeon(spot.id);
     else if (spot.action === 'cofre') this.openChest(spot);
     else this.dialog(spot.text);
   }
 
+  async pray(spot) {
+    this.busy = true;
+    await this.textbox.say(spot.text);
+    await this.textbox.say('Te arrodillas y rezas por los que se perdieron. Por un momento, el pozo guarda silencio.');
+    this.textbox.hide();
+    await this.updateQuests({ prayed: true });
+    if (this.run.pendingMessage) { const m = this.run.pendingMessage; this.run.pendingMessage = null; await this.textbox.say(m); this.textbox.hide(); }
+    this.busy = false;
+  }
+
   // Hoguera de aldea: descanso completo y guardado (el punto seguro de cada región).
-  async rest() {
+  async rest(text = 'Descansas junto a la hoguera. El calor cierra tus heridas.', saved = 'La hoguera guarda tu paso') {
     this.busy = true;
     const p = this.run.player;
     p.hp = derive(p).maxHp;
+    healParty(this.run.party, 1);
     audio.sfx('heal');
     this.cameras.main.flash(400, 194, 141, 58);
-    await this.textbox.say('Descansas junto a la hoguera. El calor cierra tus heridas.');
+    await this.textbox.say(text);
     this.textbox.hide();
     this.run.pos = { ...this.tile };
     this.run.facing = this.facing;
-    await this.autosave('La hoguera guarda tu paso');
+    await this.autosave(saved);
+    this.busy = false;
+  }
+
+  // Altar de la capilla en ruinas: una oración cura la mitad de las heridas, una vez por piso.
+  async chapelPrayer(spot) {
+    const run = this.run;
+    run.opened ||= [];
+    this.busy = true;
+    await this.textbox.say(spot.text);
+    if (run.opened.includes(spot.id)) {
+      await this.textbox.say('Ya rezaste aquí. La vela se consume despacio, sin prisa por ti.');
+    } else {
+      run.opened.push(spot.id);
+      const p = run.player;
+      const max = derive(p).maxHp;
+      p.hp = Math.min(max, p.hp + Math.ceil(max * 0.5));
+      healParty(run.party, 0.5);
+      audio.sfx('heal');
+      this.cameras.main.flash(500, 216, 207, 188);
+      await this.textbox.say('Te arrodillas ante el altar partido. La campana muda tiembla, y tus heridas se cierran a medias.');
+    }
+    this.textbox.hide();
     this.busy = false;
   }
 
@@ -398,6 +509,7 @@ export class Overworld extends Phaser.Scene {
       piso: this.run.floor,
       bioma: this.floor.biomeName,
       clima: weatherOf(this.run.weather).name,
+      mision: npc.quest ? { encargo: npc.quest.summary, estado: (this.run.quests || []).find((q) => q.id === npc.quest.id)?.status || 'sin ofrecer' } : null,
       lugar: this.zoneAt(npc)?.name || 'tierras salvajes',
       lugares_cercanos: this.floor.zones.map((z) => z.name),
       escalera: this.stairsHint(npc),
@@ -442,8 +554,10 @@ export class Overworld extends Phaser.Scene {
       data.history.push({ role: 'user', text: '(El viajero se acerca en silencio.)' }, { role: 'assistant', text: res?.reply || fallbackGreeting(sheet, rng) });
     }
     let line = data.history[data.history.length - 1].text;
+    await this.textbox.say(`${sheet.name}: ${line}`);
+    // Misión: ofrecerla, o cumplirla y unirse al equipo.
+    if (data.quest && (await this.handleQuest(npc)) === 'joined') return;
     for (;;) {
-      await this.textbox.say(`${sheet.name}: ${line}`);
       if (data.turns >= MAX_TURNS) {
         await this.textbox.say(`${sheet.name}: Ya no tengo nada más que decirte. Sigue bajando.`);
         break;
@@ -456,6 +570,7 @@ export class Overworld extends Phaser.Scene {
       const res = await this.showThinking(sheet.name, talk({ mode: 'npc', npc: sheet, context: this.talkContext(data), history: data.history, message: text }));
       if (res?.blocked) {
         line = BLOCKED_REPLY[res.blocked];
+        await this.textbox.say(`${sheet.name}: ${line}`);
         continue;
       }
       line = res?.reply || fallbackReply(sheet, text, context, rng);
@@ -464,8 +579,8 @@ export class Overworld extends Phaser.Scene {
       // Escalamiento: Laya estima si atacará; sin Laya, solo la codicia extrema lo provoca.
       const greedy = ['altísima', 'obsesiva'].includes(context.codicia);
       const p = res?.escalate ?? (greedy ? 0.35 : 0);
+      await this.textbox.say(`${sheet.name}: ${line}`);
       if (sheet.canTurnHostile && p >= 0.35 && rng.next() < p) {
-        await this.textbox.say(`${sheet.name}: ${line}`);
         await this.npcTurnsHostile(npc);
         return;
       }
@@ -473,6 +588,85 @@ export class Overworld extends Phaser.Scene {
     this.textbox.hide();
     npc.sprite.setFrame(DIR_FRAME_BASE.down);
     this.busy = false;
+  }
+
+  questOf(npc) {
+    return (this.run.quests || []).find((q) => q.id === npc.data.quest?.id);
+  }
+
+  async handleQuest(npc) {
+    const { sheet, quest } = npc.data;
+    const state = this.questOf(npc);
+    if (!state) {
+      await this.textbox.say(`${sheet.name}: ${quest.offer}`);
+      if (await this.confirm('¿Aceptas la misión?')) {
+        (this.run.quests ||= []).push({ ...quest, status: 'activa' });
+        audio.sfx('confirm');
+        await this.textbox.say(`${sheet.name}: Gracias. Te esperaré aquí. (Misión anotada en EQUIPO.)`);
+      } else {
+        await this.textbox.say(`${sheet.name}: Lo entiendo. Si cambias de idea, aquí estaré.`);
+      }
+      this.refreshQuestMarks();
+      return 'offered';
+    }
+    if (state.status === 'activa') {
+      await this.textbox.say(`${sheet.name}: ¿Ya lo hiciste? ${state.summary}`);
+      return 'active';
+    }
+    if (state.status === 'cumplida') {
+      const party = (this.run.party ||= []);
+      if (party.length >= PARTY_MAX) {
+        await this.textbox.say(`${sheet.name}: Lo lograste. Pero ya viajas con demasiada gente. Haz sitio en tu equipo y vuelve por mí.`);
+        return 'full';
+      }
+      await this.textbox.say(`${sheet.name}: Lo lograste. Te debo más de lo que puedo decir. Desde ahora, voy contigo.`);
+      audio.sfx('encounter');
+      state.status = 'entregada';
+      party.push(companionFromNpc(npc.data, this.run.floor));
+      this.run.defeated.push(npc.data.id);
+      this.floor.blockers.delete(npc.data.y * this.floor.w + npc.data.x);
+      npc.sprite.destroy();
+      npc.mark?.destroy();
+      this.npcs = this.npcs.filter((n) => n !== npc);
+      await this.textbox.say(`¡${sheet.name} se une a tu equipo!`);
+      this.textbox.hide();
+      this.setupCompanions();
+      this.busy = false;
+      return 'joined';
+    }
+    return null;
+  }
+
+  // "!" sobre quien ofrece una misión, "?" sobre quien espera tu regreso con ella cumplida.
+  refreshQuestMarks() {
+    for (const n of this.npcs) {
+      n.mark?.destroy();
+      n.mark = null;
+      if (!n.data.quest) continue;
+      const st = this.questOf(n)?.status;
+      if (st === 'activa' || st === 'entregada') continue;
+      n.mark = pixelText(this, n.sprite.x - 2, n.sprite.y - 40, st === 'cumplida' ? '?' : '!', 'ember').setDepth(DEPTH.ui - 1);
+      this.tweens.add({ targets: n.mark, y: n.mark.y - 2, duration: 500, yoyo: true, repeat: -1 });
+    }
+    // Presa de una misión activa: una marca roja sobre ella.
+    for (const e of this.enemies) {
+      e.mark?.destroy();
+      e.mark = null;
+      const q = (this.run.quests || []).find((qq) => qq.status === 'activa' && qq.type === 'cazar' && qq.target === e.id);
+      if (q) e.mark = pixelText(this, e.sprite.x - 2, e.sprite.y - 34, '!', 'blood').setDepth(DEPTH.ui - 1);
+    }
+  }
+
+  // Comprueba misiones cumplidas y lo anuncia.
+  async updateQuests(extra = {}) {
+    const done = checkQuests(this.run, this.run.floor, { defeated: this.run.defeated, ...extra });
+    for (const q of done) {
+      audio.sfx('heal');
+      this.toast('Misión cumplida');
+      this.run.pendingMessage = this.run.pendingMessage || `Misión cumplida. ${q.giver} te espera.`;
+    }
+    if (done.length) this.refreshQuestMarks();
+    return done;
   }
 
   async npcTurnsHostile(npc) {
@@ -512,6 +706,7 @@ export class Overworld extends Phaser.Scene {
     }
     // Correr: mantener X (el botón B de Pokémon con las zapatillas).
     const running = this.controls.cancelHeld();
+    this.moveCompanions(this.tile, running ? RUN_MS : WALK_MS);
     this.moving = true;
     this.dest = { x: nx, y: ny };
     this.player.anims.play(this.hero.walk(dir), true);
@@ -766,6 +961,12 @@ export class Overworld extends Phaser.Scene {
     const tag = loot.kind === 'equip' ? ` (${RARITY_LABEL[loot.rarity]})` : '';
     await this.textbox.say(`Dentro del cofre: ${itemDisplayName(loot)}${tag}. También hay un tónico.`);
     card.destroy();
+    if (spot.boss && this.inDungeon) {
+      const q = (run.quests || []).find((qq) => qq.status === 'activa' && qq.type === 'recuperar' && qq.target === run.dungeon.id);
+      if (q) await this.textbox.say(`Bajo el botín encuentras el ${q.object} que buscaba ${q.giver}.`);
+      await this.updateQuests({ openedBoss: run.dungeon.id });
+      if (run.pendingMessage) { const m = run.pendingMessage; run.pendingMessage = null; await this.textbox.say(m); }
+    }
     this.textbox.hide();
     this.busy = false;
   }
@@ -790,6 +991,7 @@ export class Overworld extends Phaser.Scene {
       const max = derive(p).maxHp;
       const heal = Math.min(max - p.hp, Math.ceil(max * 0.25));
       p.hp += heal;
+      healParty(this.run.party, 0.25);
       this.run.pendingMessage = heal > 0 ? `Recuperas el aliento al descender. (+${heal} PS)` : null;
       this.run.floor += 1;
       this.run.defeated = [];

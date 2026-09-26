@@ -21,7 +21,25 @@ const VOICE = {
     greet: ['¡Hola! ¿Jugamos a contar escaleras?', 'Llevas treinta pasos desde la antorcha. Los conté.'],
     idle: ['¿Por qué los mayores siempre bajan y nunca suben?', 'Mi amigo se quedó en el primer piso. Dice que está bien.'],
   },
+  // Aldeanos.
+  herrera: {
+    greet: ['Buen acero el tuyo... o no. Déjame verlo de cerca.', 'Si vienes a por una hoja, llegas tarde. Si vienes a charlar, peor.'],
+    idle: ['El fuego de la fragua es lo único que aquí no miente.', 'Cada golpe de martillo tapa un ruido de allá abajo.'],
+  },
+  anciano: {
+    greet: ['Otro que baja. Siéntate, que las rodillas no perdonan.', 'Te pareces a alguien que conocí. Bajó también. No volvió.'],
+    idle: ['Esta aldea estaba en otro sitio cuando yo era joven. Te lo juro.', 'Nadie baja por buenas razones. Tú tampoco, supongo.'],
+  },
+  vigia: {
+    greet: ['¡Alto! Ah... eres de carne. Pasa, pasa.', 'No hagas ruido. El bosque escucha cuando anochece.'],
+    idle: ['Llevo tres noches sin dormir. La hoguera no debe apagarse.', 'He visto cosas entre los árboles que no tienen nombre.'],
+  },
+  posadera: {
+    greet: ['¡Pasa, pasa! Estás hecho un desastre. Siéntate junto al fuego.', 'Hay sopa. No preguntes de qué.'],
+    idle: ['Dicen que en el bosque vive una criaturita que brilla. Ojalá la veas.', 'Los rumores corren más que los lobos por aquí.'],
+  },
 };
+const voiceOf = (npc) => VOICE[npc.roleKey] || VOICE.peregrina;
 
 // Del tema más específico al más genérico: gana la primera coincidencia.
 const TOPICS = [
@@ -36,13 +54,13 @@ const TOPICS = [
 ];
 
 export function fallbackGreeting(npc, rng) {
-  return rng.pick(VOICE[npc.roleKey].greet);
+  return rng.pick(voiceOf(npc).greet);
 }
 
 export function fallbackReply(npc, message, context, rng) {
   const text = message.toLowerCase();
   const topic = TOPICS.find((t) => t.re.test(text));
-  return topic ? topic.reply(context, npc) : rng.pick(VOICE[npc.roleKey].idle);
+  return topic ? topic.reply(context, npc) : rng.pick(voiceOf(npc).idle);
 }
 
 export const BLOCKED_REPLY = {

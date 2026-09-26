@@ -7,6 +7,7 @@ export const BARKS = {
     crawler: ['Patas. Demasiadas patas.', 'Chasquidos bajo la piedra, cada vez más cerca.', 'Algo cruje entre sus mandíbulas.'],
     eldritch: ['Tu mente se niega a contar sus ojos.', 'Un canto sin voz vibra dentro de tus dientes.', 'La geometría del aire se equivoca a su alrededor.'],
     ito: ['Te mira. No parpadea. No tiene con qué.', 'Algo en su forma se enrosca, y tus pensamientos se enroscan con él.', '«Tú también podrías ser tan hermoso.»'],
+    cute: ['«¡Pip!»', 'Ladea la cabecita, curioso.', 'Da saltitos a tu alrededor, sin saber si jugar o huir.'],
     undead: ['Huesos que recuerdan cómo odiar.', '«La muerte fue solo una pausa.»', 'Huele a tumba abierta y a vino viejo.'],
   },
   greed: ['Sus ojos no te miran a ti: miran lo que llevas.', '«Eso que cargas no te pertenece. Nada aquí te pertenece.»', 'La codicia le deforma el rostro.'],

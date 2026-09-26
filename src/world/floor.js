@@ -144,6 +144,6 @@ export function validateFloor(floor) {
   const seen = reachable(floor, floor.start);
   const ok = (p) => seen[p.y * floor.w + p.x] === 1;
   const talkable = (n) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !isBlocked(floor, n.x + dx, n.y + dy) && ok({ x: n.x + dx, y: n.y + dy }));
-  const bonfires = (floor.inspect || []).filter((i) => ['hoguera', 'cofre', 'mazmorra'].includes(i.action));
+  const bonfires = (floor.inspect || []).filter((i) => ['hoguera', 'cofre', 'mazmorra', 'posada', 'capilla'].includes(i.action));
   return ok(floor.stairs) && floor.enemies.every(ok) && (floor.npcs || []).every(talkable) && bonfires.every(talkable);
 }

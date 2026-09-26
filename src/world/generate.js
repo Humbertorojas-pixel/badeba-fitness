@@ -3,10 +3,12 @@ import { BIOMES, pickBiome, dungeonThemeKey } from './biomes.js';
 import { PROPS, footprint } from './props.js';
 import { fbm, valueNoise, astar, mst, N4 } from './terrain.js';
 import { LSYSTEMS, expand, turtle } from './lsystem.js';
-import { generateEnemyTemplate } from './enemyGen.js';
+import { generateEnemyTemplate, generateCuteTemplate } from './enemyGen.js';
+import { cuteForBiome } from '../data/cute.js';
+import { assignQuests } from './quests.js';
 import { generateNpc, generateVillager } from './npcGen.js';
 import { validateFloor } from './floor.js';
-import { LORE, FRAGMENT_LORE, HOUSE_LORE, LANDMARK_LORE } from '../data/lore.js';
+import { LORE, FRAGMENT_LORE, HOUSE_LORE, LANDMARK_LORE, INN_LORE, STALL_LORE, TOWER_LORE, MILL_LORE, CAMP_LORE, CART_LORE, CHAPEL_NAMES, CHAPEL_LORE } from '../data/lore.js';
 import { G } from './ground.js';
 export const FRAGMENT_CHANCE = 0.02;
 const LANDMARK_NAME = { coloso: 'El Coloso Arrodillado', arbol_ancestral: 'Árbol Ancestral', costillar: 'Costillar del Titán' };
@@ -157,6 +159,11 @@ function tryGenerate(seed, depth, forceFragment) {
     const c = samplePoi(2, 0.8, 14);
     if (c) { shrines.push(c); pois.push(c); }
   }
+  // Capilla en ruinas: un punto de interés al que llega un camino.
+  const chapel = rng.chance(0.75) ? samplePoi(4, 0.8, 16) : null;
+  if (chapel) pois.push({ x: chapel.x, y: chapel.y + 1 });
+  const noRoad = new Uint8Array(N);
+  if (chapel) for (let dy = -2; dy <= 0; dy++) for (let dx = -2; dx <= 1; dx++) if (inside(chapel.x + dx, chapel.y + dy)) noRoad[idx(chapel.x + dx, chapel.y + dy)] = 1;
   const flatten = (c, r) => {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
@@ -172,6 +179,7 @@ function tryGenerate(seed, depth, forceFragment) {
   };
   for (const v of villages) flatten(v, 8);
   if (landmark) flatten(landmark, 5);
+  if (chapel) flatten(chapel, 4);
   flatten(start, 3);
   flatten(stairs, 3);
 
@@ -216,7 +224,7 @@ function tryGenerate(seed, depth, forceFragment) {
   }
   const wobble = valueNoise(rng.fork('road'), w, h, 6);
   const roadCost = (x, y) => {
-    if (border(x, y) < 2) return Infinity;
+    if (border(x, y) < 2 || noRoad[idx(x, y)]) return Infinity;
     const t = gAt(x, y);
     if (t === G.PATH || t === G.BRIDGE || t === G.PAVED) return 0.5;
     if (t === G.WATER) return 9;
@@ -238,6 +246,10 @@ function tryGenerate(seed, depth, forceFragment) {
     const i = idx(x, y);
     const t = ground[i];
     return !occ[i] && (t === G.GROUND || (allowPath && (t === G.PATH || t === G.PAVED)));
+  };
+  // Reserva un rectángulo para que la vegetación no tape una construcción.
+  const reserveRect = (x0, y0, x1, y1) => {
+    for (let yy = y0; yy <= y1; yy++) for (let xx = x0; xx <= x1; xx++) if (inside(xx, yy)) reserved[idx(xx, yy)] = 1;
   };
   const place = (k, x, y, v = 0, { allowPath = false, ignoreReserved = true } = {}) => {
     const prop = { k, x, y, v };
@@ -264,22 +276,33 @@ function tryGenerate(seed, depth, forceFragment) {
       spots.push({ x: Math.round(c.x + Math.cos(ang) * r) - 2, y: Math.round(c.y + Math.sin(ang) * r * 0.8) + 1 });
     }
     let houses = 0;
+    let inn = null;
+    let innTries = 0;
     const target = rng.int(4, 6);
+    const homes = [];
     for (const s of rng.shuffle(spots)) {
       if (houses >= target) break;
-      // Deja una casilla libre alrededor de cada casa (y de su techo) para que se lean por separado.
+      // La posada es la primera construcción que se intenta: la más grande, junto a la plaza.
+      const kind = !inn && innTries++ < 8 ? 'posada' : 'casa';
+      const def = PROPS[kind];
+      // Deja una casilla libre alrededor de cada edificio (y de su techo) para que se lean por separado.
       let clear = true;
-      for (let yy = s.y - 4; yy <= s.y + 1 && clear; yy++) {
-        for (let xx = s.x - 1; xx <= s.x + 4; xx++) {
+      for (let yy = s.y - def.h; yy <= s.y + 1 && clear; yy++) {
+        for (let xx = s.x - 1; xx <= s.x + def.w; xx++) {
           if (!inside(xx, yy) || occ[idx(xx, yy)] || gAt(xx, yy) === G.ROCK || gAt(xx, yy) === G.WATER) { clear = false; break; }
         }
       }
       if (!clear) continue;
-      const doorFront = { x: s.x + PROPS.casa.door[0], y: s.y + 1 };
+      const doorFront = { x: s.x + def.door[0], y: s.y + 1 };
       if (!free(doorFront.x, doorFront.y, true)) continue;
-      if (!place('casa', s.x, s.y, rng.int(0, 2), { allowPath: false })) continue;
+      const built = place(kind, s.x, s.y, rng.int(0, kind === 'posada' ? 1 : 2), { allowPath: false });
+      if (!built) continue;
       houses++;
-      f.inspect.push({ x: s.x + PROPS.casa.door[0], y: s.y, text: lore.pick(HOUSE_LORE) });
+      homes.push(built);
+      if (kind === 'posada') {
+        inn = built;
+        f.inspect.push({ x: s.x + def.door[0], y: s.y, action: 'posada', text: lore.pick(INN_LORE) });
+      } else f.inspect.push({ x: s.x + def.door[0], y: s.y, text: lore.pick(HOUSE_LORE) });
       const walk = astar(w, h, doorFront, { x: c.x, y: c.y + 1 }, (x, y) => {
         if (occ[idx(x, y)]) return Infinity;
         const t = gAt(x, y);
@@ -288,11 +311,47 @@ function tryGenerate(seed, depth, forceFragment) {
       });
       for (const k of walk || []) if (ground[k] === G.GROUND) ground[k] = G.PATH;
     }
+    // Leña, barriles y cajas junto a las casas (nunca sobre los senderos).
+    for (const hp of homes) {
+      const def = PROPS[hp.k];
+      if (rng.chance(0.5)) place('lena', hp.x + def.w, hp.y) || place('lena', hp.x - 2, hp.y);
+      else place(rng.pick(['barril', 'cajas']), hp.x + def.w, hp.y, rng.int(0, 1));
+    }
     for (let i = 0, lamps = 0; i < 30 && lamps < 4; i++) {
       const ang = rng.next() * Math.PI * 2;
       if (place('farol', Math.round(c.x + Math.cos(ang) * 3.6), Math.round(c.y + Math.sin(ang) * 3))) lamps++;
     }
     place('pozo', c.x + 2, c.y - 2);
+    // Puestos de mercado en el borde de la plaza: con acceso por delante y sin pisar senderos.
+    const stallOk = (x, y) => [0, 1].every((dx) => {
+      const t = gAt(x + dx, y);
+      const below = gAt(x + dx, y + 1);
+      return inside(x + dx, y - 1) && !occ[idx(x + dx, y)] && !occ[idx(x + dx, y - 1)] && !occ[idx(x + dx, y + 1)]
+        && (t === G.GROUND || t === G.PAVED) && (below === G.GROUND || below === G.PAVED || below === G.PATH);
+    });
+    for (let t = 0, stalls = 0, want = rng.int(1, 2); t < 30 && stalls < want; t++) {
+      const ang = rng.next() * Math.PI * 2;
+      const r = rng.int(4, 5);
+      const x = Math.round(c.x + Math.cos(ang) * r) - 1;
+      const y = Math.round(c.y + Math.sin(ang) * r * 0.8);
+      if (Math.abs(x - c.x) < 2 && Math.abs(y - c.y) < 2) continue;
+      if (!stallOk(x, y) || !place('puesto', x, y, rng.int(0, 2), { allowPath: true })) continue;
+      f.inspect.push({ x, y, text: lore.pick(STALL_LORE) });
+      if (rng.chance(0.6)) place('cajas', x + 2, y, rng.int(0, 1), { allowPath: false });
+      stalls++;
+    }
+    // Torre de vigía en el borde de la aldea, mirando al bosque.
+    for (let t = 0; t < 16; t++) {
+      const ang = rng.next() * Math.PI * 2;
+      const x = Math.round(c.x + Math.cos(ang) * 9);
+      const y = Math.round(c.y + Math.sin(ang) * 7.5);
+      let clear = true;
+      for (let yy = y - 5; yy <= y + 1 && clear; yy++) for (let xx = x - 1; xx <= x + 2; xx++) if (!inside(xx, yy) || occ[idx(xx, yy)]) { clear = false; break; }
+      if (!clear || !place('torre', x, y, rng.int(0, 1))) continue;
+      reserveRect(x - 1, y - 5, x + 2, y + 3);
+      f.inspect.push({ x, y, text: lore.pick(TOWER_LORE) });
+      break;
+    }
     const people = rng.int(2, 3);
     for (let i = 0, t = 0; i < people && t < 60; t++) {
       const x = c.x + rng.int(-3, 3);
@@ -324,6 +383,11 @@ function tryGenerate(seed, depth, forceFragment) {
       const sy = fy + Math.floor(fh / 2);
       ground[idx(sx, sy)] = G.GROUND;
       if (made === 0) place('espantapajaros', sx, sy);
+      if (made === 0 && (B.house === 'madera' || B.house === 'palafito') && rng.chance(0.7)) {
+        for (const mx of [fx + fw + 1, fx - 4]) {
+          if (place('molino', mx, fy + fh - 1)) { reserveRect(mx - 1, fy + fh - 6, mx + 3, fy + fh + 3); f.inspect.push({ x: mx + 1, y: fy + fh - 1, text: lore.pick(MILL_LORE) }); break; }
+        }
+      }
       made++;
     }
   });
@@ -360,7 +424,7 @@ function tryGenerate(seed, depth, forceFragment) {
         }
       }
     }
-    f.inspect.push({ x: front.x, y: front.y - 1, text: LANDMARK_LORE[kind] });
+    f.inspect.push({ x: front.x, y: front.y - 1, text: LANDMARK_LORE[kind], landmark: true });
     f.guardSpot = front;
     f.zones.push({ name: LANDMARK_NAME[kind], kind: 'monumento', x: landmark.x, y: landmark.y - 3, r: 7 });
   }
@@ -412,6 +476,59 @@ function tryGenerate(seed, depth, forceFragment) {
     f.dungeons.push({ id, name, theme: themeKey, x: e.door.x, y: e.door.y, front: e.front });
     f.zones.push({ name, kind: 'mazmorra', x: e.front.x, y: e.front.y, r: 3 });
   });
+
+  // Capilla en ruinas: rezar en su altar cura una vez por piso.
+  if (chapel) {
+    if (place('capilla', chapel.x - 2, chapel.y, rng.int(0, 2), { allowPath: true })) {
+      const name = rng.pick(CHAPEL_NAMES);
+      f.inspect.push({ x: chapel.x, y: chapel.y, action: 'capilla', id: 'capilla', text: CHAPEL_LORE });
+      f.zones.push({ name, kind: 'capilla', x: chapel.x, y: chapel.y - 1, r: 4 });
+    }
+  }
+
+  // Campamentos abandonados cerca de los caminos: tienda, fogata apagada y, a veces, un cofre.
+  const nearRoad = (c, r) => {
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (gAt(c.x + dx, c.y + dy) === G.PATH) return true;
+    return false;
+  };
+  const wantCamps = w >= 160 ? 2 : rng.int(1, 2);
+  for (let t = 0, camps = 0; t < 500 && camps < wantCamps; t++) {
+    const c = cell(rng.pick(main));
+    if (border(c.x, c.y) < 5 || gAt(c.x, c.y) !== G.GROUND || openness(c, 3) < 0.9) continue;
+    if (dist(c, start) < 10 || dist(c, stairs) < 8 || villages.some((v) => dist(v, c) < 16) || pois.some((q) => dist(q, c) < 8)) continue;
+    if (!nearRoad(c, 6) || nearRoad(c, 1)) continue;
+    let clear = true;
+    for (let yy = c.y - 3; yy <= c.y + 2 && clear; yy++) for (let xx = c.x - 2; xx <= c.x + 4; xx++) if (!inside(xx, yy) || occ[idx(xx, yy)] || reserved[idx(xx, yy)]) { clear = false; break; }
+    if (!clear || !place('tienda', c.x, c.y, rng.int(0, 1))) continue;
+    reserveRect(c.x - 3, c.y - 3, c.x + 5, c.y + 2);
+    f.inspect.push({ x: c.x, y: c.y, text: lore.pick(CAMP_LORE) });
+    place('fogata', c.x + 3, c.y + 1);
+    place(rng.pick(['cajas', 'barril']), c.x - 1, c.y, rng.int(0, 1));
+    if (rng.chance(0.6)) {
+      const id = `camp${camps}`;
+      const chest = place('cofre', c.x + 3, c.y - 1);
+      if (chest) { chest.id = id; f.inspect.push({ x: c.x + 3, y: c.y - 1, action: 'cofre', id }); }
+    }
+    f.zones.push({ name: 'Campamento abandonado', kind: 'campamento', x: c.x + 1, y: c.y, r: 3 });
+    pois.push(c);
+    camps++;
+  }
+
+  // Carretas rotas al borde de los caminos.
+  const roadCells = [];
+  for (let i = 0; i < N; i++) if (ground[i] === G.PATH) roadCells.push(i);
+  for (let t = 0, carts = 0, want = rng.int(1, 3); t < 200 && carts < want && roadCells.length; t++) {
+    const c = cell(rng.pick(roadCells));
+    if (villages.some((v) => dist(v, c) < 12) || pois.some((q) => dist(q, c) < 6)) continue;
+    const spot = [[1, 0], [-2, 0], [0, 1], [0, -1], [-1, 1], [-1, -1]].map(([dx, dy]) => ({ x: c.x + dx, y: c.y + dy }))
+      .find((q) => [0, 1].every((dx) => free(q.x + dx, q.y) && !reserved[idx(q.x + dx, q.y)] && !occ[idx(q.x + dx, q.y - 1)]));
+    if (!spot || !place('carreta', spot.x, spot.y, rng.int(0, 1), { ignoreReserved: false })) continue;
+    reserveRect(spot.x - 1, spot.y - 2, spot.x + 2, spot.y + 1);
+    f.inspect.push({ x: spot.x, y: spot.y, text: lore.pick(CART_LORE) });
+    if (rng.chance(0.5)) place('barril', spot.x + 2, spot.y, 1, { ignoreReserved: false });
+    pois.push(spot);
+    carts++;
+  }
 
   // El Descenso: el pozo hacia el siguiente piso.
   f.stairs = stairs;
@@ -564,6 +681,20 @@ function tryGenerate(seed, depth, forceFragment) {
     delete f.guardSpot;
   }
 
+  // Criaturas adorables: una o dos por región, lejos del camino principal; no persiguen.
+  const cuteKinds = rng.shuffle(cuteForBiome(biomeKey));
+  const cuteCount = Math.min(cuteKinds.length, rng.chance(0.5) ? 2 : 1);
+  let cuteMade = 0;
+  for (const k of candidates) {
+    if (cuteMade >= cuteCount) break;
+    const c = cell(k);
+    if (occ[k] || dist(c, start) < 12 || f.enemies.some((e) => dist(e, c) < 6) || villages.some((v) => dist(v, c) < 10)) continue;
+    occ[k] = 1;
+    const form = cuteKinds[cuteMade];
+    f.enemies.push({ id: `cute${cuteMade}`, ...c, home: c, passive: true, template: generateCuteTemplate({ seed: hashSeed(seed, `cute${cuteMade}`), depth, form }) });
+    cuteMade++;
+  }
+
   // Un ermitaño errante fuera de las aldeas.
   if (rng.chance(0.6) || villages.length === 0) {
     for (const k of candidates) {
@@ -596,6 +727,7 @@ function tryGenerate(seed, depth, forceFragment) {
   }
   if (best && best.n >= 12) f.zones.push({ name: rng.pick(B.forestNames), kind: 'bosque', x: Math.round(best.x), y: Math.round(best.y), r: 9 });
 
+  assignQuests(f, seed, depth);
   f.villages = villages.length;
   f.landmark = !!landmark;
   return f;

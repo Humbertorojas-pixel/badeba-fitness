@@ -17,5 +17,13 @@ export const MOVES = {
   abismo: { name: 'Mirada del Abismo', power: 17, acc: 0.85, kind: 'attack' },
   pesadilla: { name: 'Pesadilla', power: 15, acc: 1.0, kind: 'attack' },
   maldicion: { name: 'Maldición', power: 16, acc: 0.85, kind: 'attack' },
+  placaje: { name: 'Placaje', power: 9, acc: 0.95, kind: 'attack' },
+  polen: { name: 'Polen', power: 8, acc: 1.0, kind: 'attack' },
+  chispazo: { name: 'Chispazo', power: 12, acc: 0.9, kind: 'attack' },
+  burbuja: { name: 'Burbuja', power: 10, acc: 1.0, kind: 'attack' },
+  campanada: { name: 'Campanada', power: 11, acc: 0.95, kind: 'attack' },
+  martillazo: { name: 'Martillazo', power: 13, acc: 0.85, kind: 'attack' },
+  flecha: { name: 'Flecha', power: 11, acc: 0.95, kind: 'attack' },
+  baston: { name: 'Bastonazo', power: 8, acc: 0.95, kind: 'attack' },
   succion: { name: 'Succión', kind: 'drain', drain: 5 },
 };

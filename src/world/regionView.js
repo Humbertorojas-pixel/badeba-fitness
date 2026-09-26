@@ -9,7 +9,7 @@ import { hexToInt, hexToRgb, PAL } from '../palette.js';
 import { BAYER4 } from '../gfx/pixelBuffer.js';
 
 // Punto de luz de cada elemento luminoso (en píxeles dentro de su imagen).
-const LIGHT_AT = { hoguera: [8, 8], farol: [8, 6], hongo: [16, 14], hongo_chico: [8, 8], vela: [8, 8], antorcha: [8, 5], cristal: [8, 8] };
+const LIGHT_AT = { torre: [16, 17], hoguera: [8, 8], farol: [8, 6], hongo: [16, 14], hongo_chico: [8, 8], vela: [8, 8], antorcha: [8, 5], cristal: [8, 8] };
 
 // Solo se muestran los objetos cerca de la cámara: los mapas tienen miles de elementos.
 class Culler {

@@ -1,4 +1,5 @@
 import { createRng } from '../core/rng.js';
+import { CUTE } from '../data/cute.js';
 
 const ARCH = {
   beast: {
@@ -39,7 +40,7 @@ const ARCH = {
 // Naturaleza legible para la IA (va en los prompts y en las decisiones de Laya).
 const NATURE = {
   beast: 'bestia', humanoid: 'humanoide corrompido', wraith: 'espectro', crawler: 'alimaña',
-  eldritch: 'horror cósmico', ito: 'pesadilla deforme', undead: 'no-muerto',
+  eldritch: 'horror cósmico', ito: 'pesadilla deforme', undead: 'no-muerto', cute: 'criatura adorable y curiosa',
 };
 export function natureOf(template) {
   const base = NATURE[template.archetype] || template.archetype;
@@ -145,6 +146,7 @@ export function generateEnemyTemplate({ seed, depth, biome, foreign = false, ran
     name,
     title,
     article,
+    gender,
     rank: tier,
     form,
     archetype,
@@ -156,5 +158,17 @@ export function generateEnemyTemplate({ seed, depth, biome, foreign = false, ran
     def: stat('def'),
     spd: stat('spd'),
     moves,
+  };
+}
+
+// Criatura adorable: poco agresiva, no porta botín; si la vences, se rinde y puede unirse a ti.
+export function generateCuteTemplate({ seed, depth, form }) {
+  const sp = CUTE[form];
+  const scale = 0.62 + 0.12 * (depth - 1);
+  const stat = (v) => Math.max(1, Math.round(v * scale));
+  return {
+    name: sp.name, title: null, article: sp.gender === 'f' ? 'Una' : 'Un', rank: 'comun', friend: true,
+    form, archetype: 'cute', ramp: sp.ramp, seed, level: depth,
+    maxHp: stat(26), str: stat(6), def: stat(5), spd: stat(9), moves: sp.moves.slice(),
   };
 }

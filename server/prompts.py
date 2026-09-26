@@ -21,6 +21,7 @@ REGLAS DE VOZ (obligatorias)
 - No inventes mecánicas que contradigan lo anterior. Puedes ser críptico, mentir si tu personaje miente, o negarte a responder.
 - Usa la información del contexto (piso, peligros, escalera) solo como la conocería tu personaje: con miedo, rumor o intuición, no como un mapa exacto.
 - Si el viajero porta objetos legendarios o únicos, tu personaje lo nota y siente codicia, miedo o reverencia según su naturaleza.
+- Si el contexto trae "mision", es el encargo que tu personaje necesita: puedes insistir en él, dar pistas vagas de dónde buscar o, si ya está cumplido, mostrar gratitud. Nunca inventes otra recompensa distinta de acompañar al viajero.
 """
 
 

@@ -9,7 +9,7 @@ import { PixelBuffer, addStrip } from '../gfx/pixelBuffer.js';
 import { audio } from '../audio/audio.js';
 import { getRun } from '../core/state.js';
 import { G } from '../world/ground.js';
-import { footprint, TREE_KINDS } from '../world/props.js';
+import { footprint, TREE_KINDS, BUILDINGS } from '../world/props.js';
 import { weatherOf } from '../world/weather.js';
 import { fit } from '../ui/itemText.js';
 
@@ -61,6 +61,27 @@ function buildIcons(scene) {
     b.rect(0, 2, 7, 5, PAL.rust2).rect(0, 2, 7, 1, PAL.rust1).set(3, 4, PAL.ember2);
     b.outline(PAL.ink);
   }, 8, 8)]);
+  addStrip(scene, 'map_icon_chapel', [icon((b) => {
+    b.rect(3, 0, 1, 3, PAL.bone2).rect(2, 1, 3, 1, PAL.bone2).poly([[0, 9], [0, 5], [3.5, 3], [7, 5], [7, 9]], PAL.stone3).rect(3, 6, 1, 3, PAL.ink);
+    b.outline(PAL.ink);
+  }, 8, 10)]);
+  addStrip(scene, 'map_icon_camp', [icon((b) => {
+    b.poly([[0, 7], [3.5, 0], [7, 7]], PAL.bone1).poly([[2.5, 7], [3.5, 4], [4.5, 7]], PAL.ink);
+    b.outline(PAL.ink);
+  }, 8, 8)]);
+  // Misiones: "!" quien ofrece una, "?" quien espera tu regreso, diana roja el objetivo activo.
+  addStrip(scene, 'map_icon_quest', [icon((b) => {
+    b.rect(2, 0, 3, 5, PAL.ember2).rect(2, 6, 3, 2, PAL.ember2).rect(3, 0, 1, 5, PAL.bone2);
+    b.outline(PAL.ink);
+  }, 7, 9)]);
+  addStrip(scene, 'map_icon_quest_done', [icon((b) => {
+    b.rect(1, 0, 5, 2, PAL.ember2).rect(4, 2, 2, 2, PAL.ember2).rect(3, 3, 2, 2, PAL.ember2).rect(3, 6, 2, 2, PAL.ember2);
+    b.outline(PAL.ink);
+  }, 8, 9)]);
+  addStrip(scene, 'map_icon_target', [icon((b) => {
+    b.ellipse(4.5, 4.5, 4.4, 4.4, PAL.blood3).ellipse(4.5, 4.5, 3, 3, PAL.ink).ellipse(4.5, 4.5, 1.6, 1.6, PAL.blood3);
+    b.outline(PAL.ink);
+  }, 10, 10)]);
   addStrip(scene, 'map_icon_player', [icon((b) => {
     b.poly([[3.5, 0], [7, 7], [3.5, 5], [0, 7]], PAL.ember2).set(3, 3, PAL.bone2);
     b.outline(PAL.ink);
@@ -155,7 +176,7 @@ export class MapView extends Phaser.Scene {
 
     this.cover = new Uint8Array(f.w * f.h);
     for (const p of f.props) {
-      const code = TREE_KINDS.has(p.k) ? COVER.TREE : p.k === 'casa' ? COVER.HOUSE : LANDMARKS.has(p.k) ? COVER.LANDMARK : COVER.PROP;
+      const code = TREE_KINDS.has(p.k) ? COVER.TREE : BUILDINGS.has(p.k) ? COVER.HOUSE : LANDMARKS.has(p.k) ? COVER.LANDMARK : COVER.PROP;
       for (const [x, y] of footprint(p)) if (x >= 0 && y >= 0 && x < f.w && y < f.h) this.cover[y * f.w + x] = code;
     }
     for (const s of ZOOMS) {
@@ -234,6 +255,8 @@ export class MapView extends Phaser.Scene {
       if (!seen(z.x, z.y)) continue;
       if (z.kind === 'aldea') mark(z.x, z.y, 'map_icon_village', z.name);
       else if (z.kind === 'monumento') mark(z.x, z.y, 'map_icon_monument', z.name);
+      else if (z.kind === 'capilla') mark(z.x, z.y, 'map_icon_chapel', s === 4 ? z.name : null);
+      else if (z.kind === 'campamento' && s === 4) mark(z.x, z.y, 'map_icon_camp');
       else if (z.kind === 'mazmorra' && z.r < 50) mark(z.x, z.y - 1, 'map_icon_dungeon', z.name);
       else if ((z.kind === 'lago' || z.kind === 'bosque') && s === 4) {
         const t = pixelText(this, 0, 0, z.name, 'dim');
@@ -246,6 +269,7 @@ export class MapView extends Phaser.Scene {
     if (guard && seen(guard.x, guard.y) && !run.defeated.includes(guard.id)) mark(guard.x, guard.y, 'map_icon_danger');
     for (const c of f.inspect.filter((i) => i.action === 'cofre')) if (seen(c.x, c.y) && !(run.opened || []).includes(c.id)) mark(c.x, c.y, 'map_icon_chest');
     if (seen(f.stairs.x, f.stairs.y)) mark(f.stairs.x, f.stairs.y, 'map_icon_stairs', s === 4 ? (f.dark ? 'Salida' : 'El Descenso') : null);
+    if (!f.dark) this.questMarks(run, mark, seen);
     this.player = this.add.image(0, 0, 'map_icon_player').setOrigin(0.5, 0.5);
     this.markers.add(this.player);
     this.marks.push({ tx: this.pos.x, ty: this.pos.y, img: this.player, text: null });
@@ -258,6 +282,29 @@ export class MapView extends Phaser.Scene {
         const w = measure(m.text.text || '');
         m.text.setPosition(Math.round(m.center ? x - w / 2 : x + 6), Math.round(y - 4));
       }
+    }
+  }
+
+  // Quien ofrece misión (si ya lo viste), quien espera tu regreso y el objetivo de cada misión
+  // activa: el NPC te dijo dónde buscar, así que el objetivo se marca aunque siga en la niebla.
+  questMarks(run, mark, seen) {
+    const f = this.f;
+    const quests = (run.quests || []).filter((q) => q.floor === run.floor);
+    for (const n of f.npcs) {
+      if (!n.quest || run.defeated.includes(n.id)) continue;
+      const q = quests.find((qq) => qq.id === n.quest.id);
+      if (!q && seen(n.x, n.y)) mark(n.x, n.y, 'map_icon_quest', this.s === 4 ? n.sheet.name : null);
+      else if (q?.status === 'cumplida') mark(n.x, n.y, 'map_icon_quest_done', this.s >= 2 ? n.sheet.name : null);
+    }
+    for (const q of quests) {
+      if (q.status !== 'activa') continue;
+      let at = null;
+      if (q.type === 'cazar') {
+        const e = f.enemies.find((en) => en.id === q.target);
+        if (e && !run.defeated.includes(e.id)) at = e;
+      } else if (q.type === 'jefe' || q.type === 'recuperar') at = (f.dungeons || []).find((d) => d.id === q.target);
+      else if (q.type === 'peregrinar') at = f.inspect.find((i) => i.landmark);
+      if (at) mark(at.x, at.y + (q.type === 'jefe' || q.type === 'recuperar' ? -1 : 0), 'map_icon_target');
     }
   }
 

@@ -125,6 +125,21 @@ try {
     await press('z', 1, 900);
     await shot('10b-mapa');
     await press('x', 1, 600);
+    // EQUIPO: un compañero criatura inyectado y una misión activa.
+    await page.evaluate(async () => {
+      const { companionFromCreature } = await import('/src/core/party.js');
+      const { generateCuteTemplate } = await import('/src/world/enemyGen.js');
+      const run = window.__game.registry.get('run');
+      run.party = [companionFromCreature(generateCuteTemplate({ seed: 77, depth: 1, form: 'lumo' }), 1)];
+      run.quests = run.quests || [];
+    });
+    await press('Enter', 1, 500);
+    await press('ArrowDown', 1, 200);
+    await press('z', 1, 900);
+    await shot('10c-equipo');
+    await press('ArrowRight', 1, 400);
+    await shot('10d-misiones');
+    await press('x', 1, 700);
     await press('Enter', 1, 500);
     await press('ArrowDown', 2, 200);
     await press('z', 1, 800);

@@ -42,3 +42,37 @@ export const DUNGEON_LORE = [
   'Un símbolo en espiral tallado una y otra vez, cada vez más pequeño, hasta volverse un punto.',
   'Un esqueleto abrazado a un cofre vacío. Parece satisfecho.',
 ];
+
+// Construcciones de las aldeas y de los caminos.
+export const INN_LORE = [
+  'La posada. Huele a sopa, a lana mojada y a leña. Dentro, alguien canta bajito.',
+  'El letrero cruje: «El Último Farol». Detrás de la puerta, risas cansadas.',
+  'La posada. Sobre la puerta, una herradura clavada del revés «para que la suerte no se escape».',
+];
+export const STALL_LORE = [
+  'Un puesto de fruta. Las manzanas están rojas por fuera y negras por dentro.',
+  'Frascos, anzuelos y pescado seco. Un cartel: «Se fía a los que vuelven».',
+  'Telas teñidas de colores que aquí abajo nadie recuerda haber visto en el cielo.',
+  'El vendedor dejó el puesto a medias. Hay una moneda sobre el mostrador, cara abajo.',
+];
+export const TOWER_LORE = [
+  'La torre de vigía. Arriba, un cuerno y un farol que nadie deja apagar.',
+  'Marcas de cuchillo en la escala: una por cada noche sin ataques. Son muchas. Luego, ninguna.',
+];
+export const MILL_LORE = [
+  'El molino gira aunque no sople el viento. Nadie en la aldea quiere hablar de eso.',
+  'Sacos de harina gris apilados junto a la puerta. El molinero duerme de día.',
+];
+export const CAMP_LORE = [
+  'Una tienda abandonada. Dentro, una manta todavía tibia y ningún rastro de su dueño.',
+  'Restos de un campamento. Alguien dejó escrito en la lona: «Si lees esto, no esperes a nadie».',
+  'Mochilas vacías y una olla volcada. Se fueron con prisa, o se los llevaron.',
+  'La tienda está rasgada desde dentro.',
+];
+export const CART_LORE = [
+  'Una carreta volcada. La rueda está partida y la carga, esparcida por el barro.',
+  'Una carreta sin bueyes. Las riendas cuelgan cortadas limpiamente.',
+  'Sacos de grano reventados. Algo pequeño y con muchos dientes comió aquí.',
+];
+export const CHAPEL_NAMES = ['Capilla del Último Rezo', 'Ermita de la Campana Muda', 'Capilla de los Ahogados', 'Ermita del Alba Rota', 'Capilla de Santa Ceniza'];
+export const CHAPEL_LORE = 'Una capilla en ruinas. La campana aún cuelga, muda. En el altar partido arde una vela que nadie encendió.';

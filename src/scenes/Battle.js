@@ -25,12 +25,15 @@ import { MOVES } from '../data/moves.js';
 import { CONSUMABLES, RARITY_LABEL } from '../data/items.js';
 import { weatherOf } from '../world/weather.js';
 import { natureOf } from '../world/enemyGen.js';
+import { PARTY_MAX, companionCombatant, gainCompanionXp, companionFromCreature } from '../core/party.js';
+import { DIR_FRAME_BASE } from '../gfx/heroArt.js';
 import { WeatherView } from '../gfx/weatherView.js';
 import { ensureItemIcon } from '../gfx/itemArt.js';
 import { itemMaterial } from '../data/items.js';
 
 const ENEMY_BASE = { x: 176, y: 70 };
 const PLAYER_BASE = { x: 64, y: 112 };
+const ALLY_POS = [{ x: 18, y: 110 }, { x: 110, y: 110 }];
 
 // Panel de PS con barra verde/amarilla/roja animada, como en Pokémon GBA.
 class HpPanel {
@@ -135,6 +138,7 @@ export class Battle extends Phaser.Scene {
     this.playerGroup.add(this.add.image(PLAYER_BASE.x, PLAYER_BASE.y - 8, 'platform_player'));
     this.playerSprite = this.add.image(PLAYER_BASE.x, PLAYER_BASE.y + 4, ensureHeroTextures(this, this.run.player.equipment).back).setOrigin(0.5, 1);
     this.playerGroup.add(this.playerSprite);
+    this.setupAllies();
 
     this.enemyPanel = new HpPanel(this, { x: 4, y: 8, w: 120, h: 32, name: this.enemy.name, level: template.level, rank });
     this.playerPanel = new HpPanel(this, { x: 128, y: 70, w: 108, h: 40, name: this.player.name, level: this.run.player.level, showNumbers: true });
@@ -168,6 +172,103 @@ export class Battle extends Phaser.Scene {
 
   update(time, delta) {
     this.weather?.update(time, delta);
+  }
+
+  // Compañeros junto al jugador: sprite (de espaldas o de lado) y una barrita de PS.
+  setupAllies() {
+    this.allyData = (this.run.party || []).filter((c) => c.hp > 0).slice(0, PARTY_MAX);
+    this.allies = this.allyData.map(companionCombatant);
+    this.allyViews = this.allyData.map((c, i) => {
+      const pos = ALLY_POS[i];
+      let sprite;
+      if (c.kind === 'criatura') {
+        const tex = ensureMonsterTextures(this, c.id, c.template);
+        sprite = this.add.sprite(pos.x, pos.y, tex.small).setOrigin(0.5, 1).setFlipX(true).play(`${tex.small}_anim`);
+      } else {
+        sprite = this.add.sprite(pos.x, pos.y, `npc_${c.palette}`, DIR_FRAME_BASE.up).setOrigin(0.5, 1);
+      }
+      const bar = this.add.graphics();
+      this.playerGroup.add([sprite, bar]);
+      const view = { sprite, bar, pos };
+      this.drawAllyBar(view, this.allies[i]);
+      return view;
+    });
+  }
+
+  drawAllyBar(view, ally) {
+    const ratio = Math.max(0, ally.hp / ally.maxHp);
+    const color = ratio > 0.5 ? PAL.hpGreen : ratio > 0.2 ? PAL.hpYellow : PAL.hpRed;
+    const x = view.pos.x - 10;
+    const y = view.pos.y - 30;
+    view.bar.clear().fillStyle(hexToInt(PAL.ink)).fillRect(x - 1, y - 1, 22, 4).fillStyle(hexToInt(PAL.stone1)).fillRect(x, y, 20, 2)
+      .fillStyle(hexToInt(color)).fillRect(x, y, Math.ceil(20 * ratio), 2);
+  }
+
+  sideSprite(side) {
+    if (side === 'player') return this.playerSprite;
+    if (side === 'enemy') return this.enemySprite;
+    return this.allyViews[Number(side.slice(4))]?.sprite;
+  }
+
+  async confirm(text) {
+    await this.textbox.say(text, { hold: true });
+    const menu = new Menu(this, this.controls, { x: GAME_W - 64, y: 64, w: 60, h: 46, items: [{ label: 'Sí' }, { label: 'No' }] });
+    const choice = await menu.open(0);
+    menu.destroy();
+    return choice === 0;
+  }
+
+  // Una criatura adorable vencida puede unirse al equipo.
+  async recruit() {
+    const run = this.run;
+    const t = this.template;
+    run.party ||= [];
+    audio.sfx('heal');
+    await this.say(`${t.name} te mira con ojos enormes. Ya no quiere pelear: quiere acompañarte.`);
+    if (!(await this.confirm(`¿Aceptar a ${t.name} en tu equipo?`))) {
+      await this.friendLeaves();
+      await this.say(`${t.name} vuelve a su escondite, un poco triste.`);
+      return;
+    }
+    const member = companionFromCreature(t, run.floor);
+    if (run.party.length >= PARTY_MAX) {
+      await this.textbox.say('Tu equipo está completo. ¿Quién se despide?', { hold: true });
+      const items = [...run.party.map((c) => ({ label: fit(c.name, 70) })), { label: 'Nadie' }];
+      const menu = new Menu(this, this.controls, { x: GAME_W - 94, y: 40, w: 90, h: 12 + items.length * 16, rowH: 16, padY: 10, items });
+      const choice = await menu.open(items.length - 1);
+      menu.destroy();
+      if (choice < 0 || choice >= run.party.length) {
+        await this.friendLeaves();
+        await this.say(`${t.name} vuelve a su escondite.`);
+        return;
+      }
+      const gone = run.party.splice(choice, 1)[0];
+      await this.say(`${gone.name} se despide y se queda en este piso.`);
+    }
+    run.party.push(member);
+    audio.sfx('encounter');
+    await this.friendHops();
+    await this.say(`¡${t.name} se une a tu equipo!`);
+  }
+
+  // La criatura se levanta y da dos saltitos de alegría.
+  async friendHops() {
+    const sp = this.enemySprite;
+    const base = this.friendScale || { x: sp.scaleX, y: sp.scaleY };
+    sp.anims?.resume();
+    await new Promise((r) => this.tweens.add({ targets: sp, scaleX: base.x, scaleY: base.y, duration: 180, onComplete: r }));
+    const y0 = sp.y;
+    await new Promise((r) => this.tweens.add({ targets: sp, y: y0 - 10, duration: 150, yoyo: true, repeat: 1, ease: 'Quad.easeOut', onComplete: r }));
+    sp.y = y0;
+  }
+
+  // La criatura se marcha dando saltitos hacia su escondite.
+  async friendLeaves() {
+    const sp = this.enemySprite;
+    const base = this.friendScale || { x: sp.scaleX, y: sp.scaleY };
+    sp.setFlipX(!sp.flipX);
+    await new Promise((r) => this.tweens.add({ targets: sp, scaleX: base.x, scaleY: base.y, duration: 160, onComplete: r }));
+    await new Promise((r) => this.tweens.add({ targets: sp, x: GAME_W + 50, duration: 700, ease: 'Quad.easeIn', onComplete: r }));
   }
 
   buildPlayerCombatant() {
@@ -222,7 +323,8 @@ export class Battle extends Phaser.Scene {
       audio.sfx('encounter');
       this.cameras.main.shake(300, t0.rank === 'unico' ? 0.012 : 0.006);
     }
-    await this.say(`¡${who} surge de la penumbra!`);
+    if (t0.friend) await this.say(`¡${who} salvaje aparece! Parece más curioso que hostil.`);
+    else await this.say(`¡${who} surge de la penumbra!`);
     if (t0.rank === 'raro') await this.say('Es un ejemplar raro: más fuerte y más astuto que los de su especie.');
     if (t0.rank === 'legendario') await this.say(`Una criatura legendaria. Los muertos de este pozo aún susurran su nombre.`);
     if (t0.rank === 'unico') await this.say('Algo único, que no debería existir. El aire mismo se retuerce a su alrededor.');
@@ -352,7 +454,7 @@ export class Battle extends Phaser.Scene {
         break;
       }
       const enemyAction = await decideEnemyAction({ enemy: this.enemy, player: this.player, template: this.template, run: this.run }, this.rng);
-      const result = resolveTurn({ player: this.player, enemy: this.enemy, consumables: this.run.bag.consumables }, action, this.rng, enemyAction);
+      const result = resolveTurn({ player: this.player, enemy: this.enemy, consumables: this.run.bag.consumables, allies: this.allies }, action, this.rng, enemyAction);
       await this.play(result.events);
       outcome = result.outcome;
     }
@@ -360,8 +462,9 @@ export class Battle extends Phaser.Scene {
   }
 
   lunge(side) {
-    const sprite = side === 'player' ? this.playerSprite : this.enemySprite;
-    const dx = side === 'player' ? 8 : -8;
+    const sprite = this.sideSprite(side);
+    if (!sprite) return Promise.resolve();
+    const dx = side === 'enemy' ? -8 : 8;
     return new Promise((resolve) => {
       this.tweens.add({ targets: sprite, x: sprite.x + dx, duration: 80, yoyo: true, onComplete: resolve });
     });
@@ -400,14 +503,20 @@ export class Battle extends Phaser.Scene {
       switch (ev.type) {
         case 'text':
           await this.say(ev.text, 700);
-          if (next && next.type === 'damage') await this.lunge(next.side === 'enemy' ? 'player' : 'enemy');
+          if (next && next.type === 'damage') await this.lunge(next.actor || (next.side === 'enemy' ? 'player' : 'enemy'));
           break;
         case 'damage': {
+          audio.sfx(ev.crit ? 'crit' : 'hit');
+          if (ev.crit) this.cameras.main.shake(200, 0.02);
+          if (ev.side.startsWith('ally')) {
+            const i = Number(ev.side.slice(4));
+            await this.blink(this.allyViews[i].sprite);
+            this.drawAllyBar(this.allyViews[i], this.allies[i]);
+            break;
+          }
           const target = ev.side === 'enemy' ? this.enemy : this.player;
           const panel = ev.side === 'enemy' ? this.enemyPanel : this.playerPanel;
           const sprite = ev.side === 'enemy' ? this.enemySprite : this.playerSprite;
-          audio.sfx(ev.crit ? 'crit' : 'hit');
-          if (ev.crit) this.cameras.main.shake(200, 0.02);
           await this.blink(sprite);
           await panel.animate(ev.hp + ev.amount, ev.hp, target.maxHp);
           break;
@@ -424,8 +533,20 @@ export class Battle extends Phaser.Scene {
           break;
         case 'faint':
           audio.sfx('faint');
+          if (ev.side.startsWith('ally')) {
+            const v = this.allyViews[Number(ev.side.slice(4))];
+            await new Promise((r) => this.tweens.add({ targets: v.sprite, alpha: 0.25, duration: 400, onComplete: r }));
+            break;
+          }
           this.idle?.stop();
           this.playerIdle?.stop();
+          // Una criatura adorable no muere: se sienta, agotada, y se rinde.
+          if (ev.side === 'enemy' && this.template.friend) {
+            this.friendScale = { x: this.enemySprite.scaleX, y: this.enemySprite.scaleY };
+            await new Promise((r) => this.tweens.add({ targets: this.enemySprite, scaleY: this.friendScale.y * 0.82, scaleX: this.friendScale.x * 1.08, duration: 300, ease: 'Quad.easeOut', onComplete: r }));
+            this.enemySprite.anims?.pause();
+            break;
+          }
           if (ev.side === 'enemy') await this.sink(this.enemySprite, ENEMY_BASE.y);
           else await this.sink(this.playerSprite, PLAYER_BASE.y + 4);
           break;
@@ -461,6 +582,16 @@ export class Battle extends Phaser.Scene {
       await this.say(`¡${run.player.name} sube al nivel ${run.player.level - i}! (+3 puntos de atributo)`);
     }
     if (levels) await this.say('Asigna tus puntos en ESTADO (Enter).');
+    // Los compañeros que pelearon comparten la experiencia.
+    for (const [i, c] of this.allyData.entries()) {
+      if (this.allies[i].hp <= 0) continue;
+      const up = gainCompanionXp(c, Math.ceil(xp * 0.6));
+      if (up) { audio.sfx('heal'); await this.say(`¡${c.name} sube al nivel ${c.level}!`); }
+    }
+    if (this.template.friend) {
+      await this.recruit();
+      return;
+    }
     const loot = this.template.loot;
     if (!loot) return;
     if (loot.kind === 'consumable') run.bag.consumables[loot.key] = (run.bag.consumables[loot.key] || 0) + 1;
@@ -478,13 +609,14 @@ export class Battle extends Phaser.Scene {
       run.player.hp = this.player.hp;
       run.player.manaDrain = 0;
     }
+    this.allyData.forEach((c, i) => { c.hp = Math.max(0, Math.round(this.allies[i].hp)); });
     // Los encuentros en la hierba no tienen id: no hay nada que retirar del mapa.
     const retire = () => { if (this.enemyId) run.defeated.push(this.enemyId); };
     if (outcome === 'win') {
       audio.playMusic('victoria');
       retire();
       if (this.enemyId?.endsWith('_boss')) run.pendingMessage = 'El guardián de la mazmorra ha caído. Lo más hondo queda en silencio; su tesoro ya no tiene dueño.';
-      await this.say(`Has sobrevivido a ${this.template.article ? `${this.template.article.toLowerCase()} ` : ''}${this.enemy.name}.`);
+      if (!this.template.friend) await this.say(`Has sobrevivido a ${this.template.article ? `${this.template.article.toLowerCase()} ` : ''}${this.enemy.name}.`);
       await this.rewards();
     } else if (outcome === 'spared') {
       retire();

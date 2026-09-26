@@ -978,8 +978,310 @@ Object.assign(ART, {
   },
 });
 
+// ---------------------------------------------------------------- aldea y caminos
+
+const CANVAS = [PAL.rust1, PAL.bone0, PAL.bone1, PAL.bone2];
+const PLASTER = [PAL.stone2, PAL.bone0, PAL.bone1, PAL.bone2];
+const AWNINGS = [[PAL.blood1, PAL.blood2], [PAL.moss1, PAL.moss2], [PAL.steel1, PAL.steel2]];
+
+// Estilo de las construcciones según el bioma: madera y yeso, piedra de mausoleo o ruina gris.
+function buildStyle(B) {
+  const s = B.house;
+  if (s === 'mausoleo') return { wall: STONE, upper: [PAL.stone0, PAL.stone1, PAL.stone2, PAL.stone3], roof: [PAL.shade, PAL.stone0, PAL.stone1, PAL.stone2], beam: [PAL.ink, PAL.shade, PAL.stone0, PAL.stone1] };
+  if (s === 'ruina') return { wall: [PAL.night, PAL.steel0, PAL.steel1, PAL.stone2], upper: [PAL.steel0, PAL.stone1, PAL.stone2, PAL.bone0], roof: [PAL.ink, PAL.night, PAL.steel0, PAL.steel1], beam: WOOD };
+  if (s === 'palafito') return { wall: STONE, upper: PLASTER, roof: [PAL.moss0, PAL.moss1, PAL.moss2, PAL.bone0], beam: WOOD };
+  return { wall: STONE, upper: PLASTER, roof: [PAL.blood0, PAL.blood1, PAL.blood2, PAL.blood3], beam: WOOD };
+}
+
+function barrelAt(b, x, y, w = 10, h = 12) {
+  const m = layer(b.w, b.h).rect(x + 1, y, w - 2, h, '#').ellipse(x + w / 2, y + h / 2, w / 2, h / 2, '#');
+  b.paste(ballShade(m, WOOD, -0.8, -0.2), 0, 0);
+  for (const yy of [y + 2, y + h - 3]) b.line(x + 1, yy, x + w - 2, yy, PAL.steel1);
+  b.ellipse(x + w / 2, y + 0.5, w / 2 - 1, 1.2, PAL.rust2);
+  b.set(x + 2, y + 4, PAL.rust2).set(x + 2, y + 6, PAL.rust2);
+}
+
+function crateAt(b, x, y, s = 10) {
+  part(b, WOOD, (l) => l.rect(x, y, s, s, '#'), 1);
+  b.line(x, y, x + s - 1, y + s - 1, PAL.rust0).line(x + s - 1, y, x, y + s - 1, PAL.rust0);
+  b.rect(x, y, s, 1, PAL.rust2).rect(x, y, 1, s, PAL.rust2);
+}
+
+Object.assign(ART, {
+  // Posada de dos plantas: planta baja de piedra, alta de entramado, letrero con jarra y buhardilla.
+  posada(B, v) {
+    const st = buildStyle(B);
+    const rng = createRng(301 + v);
+    const b = layer(80, 80);
+    // Planta baja de sillares.
+    part(b, st.wall, (l) => l.rect(4, 52, 72, 28, '#'), 2);
+    for (let y = 55; y < 79; y += 4) for (let x = 4 + ((y / 4) % 2) * 5; x < 75; x += 10) b.line(x, y, x + 8, y, st.wall[0]).set(x + 9, y - 2, st.wall[0]);
+    // Planta alta de entramado, volada sobre la baja.
+    part(b, st.upper, (l) => l.rect(1, 32, 78, 21, '#'), 2);
+    const beam = st.beam;
+    b.rect(1, 32, 78, 2, beam[1]).rect(1, 51, 78, 2, beam[1]);
+    for (const x of [1, 19, 39, 59, 77]) b.rect(x, 32, 2, 21, beam[1]);
+    for (const [x0, x1] of [[3, 19], [61, 77]]) { b.line(x0, 50, x1, 34, beam[1]); b.line(x0 + 1, 50, x1 + 1, 34, beam[0]); }
+    for (let x = 2; x < 78; x += 3) b.set(x, 53, PAL.ink);
+    // Ventanas de la planta alta (iluminadas).
+    for (const x of [25, 45]) windowLit(b, x, 37, 9, 9, true, beam);
+    // Tejado a dos aguas con buhardilla y chimenea.
+    part(b, st.roof, (l) => l.poly([[0, 33], [80, 33], [70, 8], [10, 8]], '#'), 3);
+    shingles(b, 1, 9, 79, 33, st.roof);
+    b.rect(10, 7, 60, 2, st.roof[3]).rect(0, 33, 80, 1, PAL.ink);
+    part(b, st.roof, (l) => l.poly([[31, 26], [49, 26], [40, 12]], '#'), 2);
+    part(b, st.upper, (l) => l.rect(34, 20, 12, 8, '#'), 1);
+    windowLit(b, 37, 21, 6, 6, v !== 1, beam);
+    b.line(31, 26, 40, 12, st.roof[3]).line(40, 12, 49, 26, st.roof[0]);
+    part(b, STONE, (l) => l.rect(62, 0, 7, 12, '#'), 1);
+    b.rect(61, 0, 9, 2, PAL.stone3).rect(63, 1, 5, 1, PAL.ink);
+    // Puerta doble en arco (casilla 2: x 32..47), escalón y faroles.
+    const arch = layer(80, 80).rect(33, 63, 14, 17, '#').ellipse(40, 63, 7, 5, '#');
+    b.paste(shadeLayer(arch, [PAL.rust0, PAL.rust0, PAL.rust1, PAL.rust2], { shadowDepth: 1 }), 0, 0);
+    b.line(40, 59, 40, 79, PAL.ink);
+    for (const x of [35, 38, 42, 45]) b.line(x, 62, x, 79, PAL.rust0);
+    b.set(38, 71, PAL.ember2).set(42, 71, PAL.ember2);
+    b.rect(31, 57, 18, 1, st.wall[3]);
+    b.rect(31, 79, 18, 1, PAL.stone3);
+    // Ventanas bajas: una con cortina roja, otra con luz.
+    windowLit(b, 12, 60, 9, 8, true);
+    windowLit(b, 63, 60, 9, 8, v === 0);
+    if (v !== 0) b.rect(63, 60, 3, 8, PAL.blood2).rect(69, 60, 3, 8, PAL.blood2);
+    flowerBox(b, 10, 69, 13, rng);
+    // Letrero colgante con una jarra, entre la puerta y la ventana.
+    part(b, IRON, (l) => l.rect(48, 56, 9, 1, '#').rect(48, 55, 1, 3, '#'), 1);
+    part(b, WOOD, (l) => l.rect(49, 58, 8, 8, '#'), 1);
+    b.line(50, 57, 50, 58, PAL.steel2).line(56, 57, 56, 58, PAL.steel2);
+    b.rect(50, 60, 4, 4, PAL.ember1).rect(54, 61, 1, 2, PAL.ember1).rect(50, 60, 4, 1, PAL.bone2);
+    return b.outline(PAL.ink);
+  },
+  // Puesto de mercado: toldo a rayas, mostrador y mercancía según la variante.
+  puesto(B, v) {
+    const rng = createRng(311 + v);
+    const b = layer(32, 32);
+    part(b, WOOD, (l) => l.rect(2, 8, 2, 23, '#').rect(28, 8, 2, 23, '#'), 1);
+    // Mostrador.
+    part(b, WOOD, (l) => l.rect(1, 20, 30, 11, '#'), 2);
+    b.rect(1, 20, 30, 2, PAL.rust2);
+    for (const x of [8, 16, 24]) b.line(x, 22, x, 30, PAL.rust0);
+    // Mercancía.
+    if (v === 0) {
+      for (let x = 4; x < 28; x += 3) { const c = rng.pick([PAL.blood3, PAL.ember2, PAL.moss2]); b.ellipse(x + 1, 18.5, 1.6, 1.6, c).set(x, 18, PAL.bone2); }
+      b.rect(3, 16, 5, 4, PAL.rust1).ellipse(5.5, 16, 2.5, 1.5, PAL.ember1);
+    } else if (v === 1) {
+      for (const x of [5, 9, 13]) { b.rect(x, 14, 2, 6, PAL.steel2).rect(x, 13, 2, 1, PAL.rust1).set(x, 15, PAL.steel3); }
+      for (const x of [18, 23]) b.ellipse(x + 2, 18.5, 3, 1.5, PAL.steel2).set(x, 18, PAL.bone2).set(x + 5, 18, PAL.steel3);
+    } else {
+      for (const [x, c] of [[4, PAL.blood2], [10, PAL.steel2], [16, PAL.moss2], [22, PAL.ember1]]) {
+        b.rect(x, 14, 5, 6, c).line(x, 14, x, 19, PAL.bone1).set(x + 4, 15, PAL.ink);
+      }
+    }
+    // Toldo a rayas con volantes.
+    const [c0, c1] = AWNINGS[v % 3];
+    const awn = layer(32, 32).poly([[0, 12], [32, 12], [29, 3], [3, 3]], '#');
+    b.paste(awn, 0, 0);
+    for (let x = 0; x < 32; x++) for (let y = 3; y <= 12; y++) if (b.get(x, y)) b.set(x, y, Math.floor((x - (12 - y) * 0.3) / 4) % 2 ? c0 : PAL.bone1);
+    for (let x = 0; x < 32; x += 4) b.ellipse(x + 2, 12.5, 2, 1.6, Math.floor(x / 4) % 2 ? c1 : PAL.bone2);
+    b.line(3, 3, 29, 3, PAL.bone2);
+    return b.outline(PAL.ink);
+  },
+  // Torre de vigía de madera: patas arriostradas, escala, plataforma con baranda y tejadillo.
+  torre(B, v) {
+    const b = layer(32, 80);
+    part(b, WOOD, (l) => {
+      l.line(3, 79, 6, 34, '#', 3).line(27, 79, 24, 34, '#', 3);
+      for (const [y0, y1] of [[40, 56], [56, 72]]) { l.line(6, y0, 24, y1, '#', 2); l.line(24, y0, 6, y1, '#', 2); }
+      l.rect(4, 56, 24, 2, '#');
+    }, 1);
+    // Escala.
+    part(b, WOOD, (l) => { l.rect(12, 36, 1, 44, '#').rect(18, 36, 1, 44, '#'); for (let y = 39; y < 80; y += 4) l.rect(12, y, 7, 1, '#'); }, 1);
+    // Plataforma y baranda.
+    part(b, WOOD, (l) => l.rect(0, 30, 32, 5, '#'), 2);
+    for (let x = 1; x < 31; x += 4) b.line(x, 31, x, 33, PAL.rust0);
+    part(b, WOOD, (l) => { l.rect(1, 20, 2, 11, '#').rect(29, 20, 2, 11, '#').rect(1, 21, 30, 2, '#'); for (let x = 5; x < 29; x += 4) l.rect(x, 23, 1, 7, '#'); }, 1);
+    // Tejadillo.
+    const roof = v ? [PAL.moss0, PAL.moss1, PAL.moss2, PAL.bone0] : [PAL.rust0, PAL.rust1, PAL.rust2, PAL.ember1];
+    part(b, WOOD, (l) => l.rect(3, 9, 2, 12, '#').rect(27, 9, 2, 12, '#'), 1);
+    part(b, roof, (l) => l.poly([[-1, 12], [33, 12], [16, 0]], '#'), 2);
+    shingles(b, 0, 2, 32, 12, roof, 3);
+    // Farol colgado y un cuerno de alarma.
+    b.line(16, 12, 16, 15, PAL.steel1);
+    part(b, IRON, (l) => l.rect(14, 15, 5, 5, '#'), 1);
+    b.rect(15, 16, 3, 3, PAL.ember2).set(15, 16, PAL.bone2);
+    b.line(24, 18, 28, 16, PAL.bone1).set(28, 15, PAL.bone2);
+    return b.outline(PAL.ink);
+  },
+  // Molino de viento de piedra con aspas que giran (4 frames, 22,5° cada uno).
+  molino(B, frame) {
+    const b = layer(48, 80);
+    const tower = layer(48, 80).poly([[10, 79], [38, 79], [34, 30], [14, 30]], '#');
+    b.paste(ballShade(tower, [PAL.stone1, PAL.bone0, PAL.bone1, PAL.bone2], -0.7, -0.2), 0, 0);
+    for (let y = 36; y < 79; y += 6) b.line(12, y, 36, y, PAL.stone2);
+    // Puerta, ventanuco y cimiento.
+    b.rect(19, 66, 10, 13, PAL.rust0).ellipse(24, 66, 5, 3, PAL.rust0).line(24, 64, 24, 78, PAL.ink).set(22, 72, PAL.ember2);
+    windowLit(b, 22, 44, 4, 5, true);
+    part(b, STONE, (l) => l.rect(9, 76, 30, 4, '#'), 1);
+    // Tejado cónico.
+    part(b, [PAL.rust0, PAL.rust1, PAL.rust2, PAL.ember1], (l) => l.poly([[11, 31], [37, 31], [24, 12]], '#'), 3);
+    for (let y = 16; y < 31; y += 3) b.line(24 - (y - 12) * 0.62, y, 24 + (y - 12) * 0.62, y, PAL.rust0);
+    // Aspas: marco de listones con lona, giradas según el frame.
+    const hub = [24, 24];
+    const sails = layer(48, 80);
+    for (let k = 0; k < 4; k++) {
+      const a = (k * Math.PI) / 2 + (frame * Math.PI) / 8;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const at = (t, o) => [hub[0] + ca * t - sa * o, hub[1] + sa * t + ca * o];
+      sails.poly([at(5, 0), at(22, 0), at(22, 5), at(5, 5)], '#');
+    }
+    b.paste(shadeLayer(sails, CANVAS, { shadowDepth: 1 }), 0, 0);
+    for (let k = 0; k < 4; k++) {
+      const a = (k * Math.PI) / 2 + (frame * Math.PI) / 8;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const at = (t, o) => [Math.round(hub[0] + ca * t - sa * o), Math.round(hub[1] + sa * t + ca * o)];
+      const [x0, y0] = at(0, 0);
+      const [x1, y1] = at(23, 0);
+      b.line(x0, y0, x1, y1, PAL.rust0);
+      for (const t of [9, 14, 19]) { const [p0, q0] = at(t, 0); const [p1, q1] = at(t, 5); b.line(p0, q0, p1, q1, PAL.rust1); }
+    }
+    b.ellipse(24, 24, 2.5, 2.5, PAL.rust1).set(24, 24, PAL.ember1);
+    return b.outline(PAL.ink);
+  },
+  // Capilla en ruinas: campanario partido, rosetón roto, arco apuntado y hiedra.
+  capilla(B, v) {
+    const rng = createRng(331 + v);
+    const b = layer(64, 80);
+    const stone = B.house === 'ruina' ? [PAL.night, PAL.steel0, PAL.steel1, PAL.stone2] : STONE;
+    // Nave con el tejado hundido a la derecha.
+    part(b, stone, (l) => l.poly([[14, 79], [62, 79], [62, 40], [56, 36], [50, 42], [44, 30], [38, 20], [30, 26], [14, 36]], '#'), 3);
+    for (let y = 44; y < 79; y += 5) for (let x = 15 + (Math.floor(y / 5) % 2) * 4; x < 61; x += 8) if (b.get(x, y) && b.get(x + 6, y)) b.line(x, y, x + 6, y, stone[0]);
+    // Restos del tejado con vigas al aire.
+    part(b, [PAL.shade, PAL.stone0, PAL.stone1, PAL.stone2], (l) => l.poly([[12, 38], [30, 24], [38, 18], [40, 22], [28, 32], [16, 40]], '#'), 2);
+    for (const [x0, y0, x1, y1] of [[46, 32, 58, 42], [50, 30, 60, 38], [44, 36, 54, 44]]) b.line(x0, y0, x1, y1, PAL.rust0).line(x0, y0 - 1, x1, y1 - 1, PAL.rust1);
+    // Rosetón roto.
+    b.ellipse(40, 44, 6, 6, PAL.ink).ellipse(40, 44, 5, 5, PAL.night);
+    for (let k = 0; k < 6; k++) { const a = (k * Math.PI) / 3; b.line(40, 44, Math.round(40 + Math.cos(a) * 5), Math.round(44 + Math.sin(a) * 5), stone[2]); }
+    b.poly([[42, 40], [46, 42], [44, 48]], PAL.ink).set(37, 42, PAL.blood2).set(38, 46, PAL.steel2).set(42, 45, PAL.ember1);
+    // Arco apuntado de la puerta (casilla 1..2: x 30..49).
+    const door = layer(64, 80).poly([[33, 79], [33, 64], [40, 56], [47, 64], [47, 79]], '#');
+    b.paste(shadeLayer(door, [PAL.ink, PAL.ink, PAL.night, PAL.shade], { shadowDepth: 2 }), 0, 0);
+    b.line(32, 64, 40, 55, stone[3]).line(40, 55, 48, 64, stone[3]);
+    part(b, WOOD, (l) => l.poly([[35, 79], [35, 70], [40, 66], [40, 79]], '#'), 1);
+    // Campanario partido con la campana visible.
+    part(b, stone, (l) => l.rect(2, 22, 14, 58, '#').poly([[1, 22], [17, 22], [15, 14], [11, 16], [8, 6], [5, 12], [2, 14]], '#'), 3);
+    b.rect(5, 26, 8, 12, PAL.ink).ellipse(9, 26, 4, 3, PAL.ink);
+    part(b, [PAL.ember0, PAL.ember0, PAL.ember1, PAL.ember2], (l) => l.poly([[6, 36], [12, 36], [11, 30], [9, 28], [7, 30]], '#'), 1);
+    b.line(9, 24, 9, 28, PAL.steel1).set(9, 37, PAL.ember0);
+    for (let y = 42; y < 79; y += 6) b.line(3, y, 15, y, stone[0]);
+    b.rect(6, 50, 3, 6, PAL.ink);
+    // Cruz torcida sobre el hastial y hiedra.
+    b.line(38, 20, 38, 12, PAL.steel1).line(35, 15, 41, 14, PAL.steel1);
+    for (let i = 0; i < 70; i++) {
+      const x = rng.int(2, 62);
+      const y = rng.int(40, 79);
+      if (b.get(x, y) && b.get(x, y) !== PAL.ink && (x < 20 || x > 52 || y > 70)) b.set(x, y, rng.chance(0.5) ? PAL.moss1 : PAL.moss2);
+    }
+    for (const [x, y] of [[20, 78], [56, 78], [26, 79]]) b.ellipse(x, y, 3, 1.5, stone[1]);
+    return b.outline(PAL.ink);
+  },
+  // Tienda de lona: entera (0) o rasgada y abandonada (1).
+  tienda(B, v) {
+    const b = layer(32, 32);
+    const canvas = v ? [PAL.rust0, PAL.rust1, PAL.bone0, PAL.bone1] : CANVAS;
+    b.line(0, 31, 6, 26, PAL.bone0).line(31, 31, 26, 26, PAL.bone0);
+    const tent = layer(32, 32).poly([[2, 31], [16, 6], [30, 31]], '#');
+    b.paste(ballShade(tent, canvas, -0.9, -0.3), 0, 0);
+    b.line(16, 6, 16, 30, canvas[0]).line(16, 3, 16, 7, PAL.rust1);
+    b.poly([[12, 31], [16, 19], [20, 31]], PAL.ink);
+    b.poly([[16, 19], [20, 31], [22, 31], [17.5, 21]], canvas[2]);
+    if (v) {
+      b.poly([[7, 22], [10, 19], [9, 25]], PAL.ink).line(23, 16, 26, 22, PAL.ink);
+      b.rect(20, 25, 4, 3, PAL.blood1).set(9, 28, PAL.blood1);
+    } else {
+      b.rect(8, 22, 4, 4, PAL.rust2).line(8, 22, 11, 25, PAL.rust1);
+    }
+    return b.outline(PAL.ink);
+  },
+  // Fogata apagada: círculo de piedras, leña carbonizada y un hilo de humo.
+  fogata() {
+    const b = layer(16, 16);
+    for (let k = 0; k < 8; k++) {
+      const a = (k * Math.PI) / 4;
+      const m = layer(16, 16).ellipse(8 + Math.cos(a) * 5.5, 11 + Math.sin(a) * 3, 1.8, 1.4, '#');
+      b.paste(ballShade(m, STONE), 0, 0);
+    }
+    b.ellipse(8, 11, 3.5, 2, PAL.stone1).set(7, 11, PAL.stone2);
+    b.line(4, 12, 11, 9, PAL.ink).line(5, 9, 12, 12, PAL.night).set(8, 10, PAL.blood1);
+    b.set(9, 6, PAL.stone2).set(8, 4, PAL.stone1).set(9, 2, PAL.stone1);
+    return b.outline(PAL.ink);
+  },
+  barril(B, v) {
+    const b = layer(16, 16);
+    if (v) {
+      const m = layer(16, 16).rect(2, 7, 12, 8, '#').ellipse(2.5, 11, 2, 4, '#').ellipse(13.5, 11, 2, 4, '#');
+      b.paste(ballShade(m, WOOD, -0.2, -0.9), 0, 0);
+      for (const x of [4, 11]) b.line(x, 7, x, 14, PAL.steel1);
+      b.ellipse(14, 11, 1.5, 3, PAL.rust0);
+    } else barrelAt(b, 3, 3, 10, 12);
+    return b.outline(PAL.ink);
+  },
+  cajas(B, v) {
+    const b = layer(16, 16);
+    if (v) {
+      for (const [x, y] of [[1, 7], [7, 8], [4, 2]]) {
+        const m = layer(16, 16).ellipse(x + 4, y + 4, 4, 4, '#').rect(x + 3, y - 1, 2, 2, '#');
+        b.paste(ballShade(m, CANVAS), 0, 0);
+        b.line(x + 3, y + 1, x + 5, y + 1, PAL.rust1);
+      }
+    } else {
+      crateAt(b, 1, 5, 10);
+      crateAt(b, 8, 8, 7);
+    }
+    return b.outline(PAL.ink);
+  },
+  // Pila de leña: troncos apilados vistos de frente.
+  lena() {
+    const b = layer(32, 16);
+    // Hueco oscuro entre troncos, y cada tronco con su corteza, anillos y corazón.
+    b.poly([[3, 15], [29, 15], [27, 3], [5, 3]], PAL.night);
+    for (let row = 0; row < 3; row++) {
+      for (let x = 7 + (row % 2) * 3 + (row === 2 ? 3 : 0); x < 27 - (row === 2 ? 3 : 0); x += 6) {
+        const y = 12 - row * 4;
+        b.ellipse(x, y, 3, 2.6, PAL.rust0).ellipse(x - 0.3, y - 0.3, 2.2, 1.9, PAL.rust2).ellipse(x, y, 1.3, 1.1, PAL.ember0).set(x, y, PAL.rust1);
+        b.set(x - 2, y - 1, PAL.ember1);
+      }
+    }
+    part(b, WOOD, (l) => l.rect(1, 3, 2, 13, '#').rect(29, 3, 2, 13, '#'), 1);
+    part(b, [PAL.rust0, PAL.rust1, PAL.rust2, PAL.ember1], (l) => l.poly([[0, 3], [32, 3], [29, 0], [3, 0]], '#'), 1);
+    return b.outline(PAL.ink);
+  },
+  // Carreta volcada: caja de tablones, una rueda entera y otra rota en el suelo.
+  carreta(B, v) {
+    const b = layer(32, 32);
+    const wheel = (cx, cy, r, broken) => {
+      b.ellipse(cx, cy, r, r, PAL.rust0).ellipse(cx, cy, r - 1.5, r - 1.5, PAL.rust1).ellipse(cx, cy, r - 2.5, r - 2.5, null);
+      for (let k = 0; k < 6; k++) {
+        if (broken && k % 2) continue;
+        const a = (k * Math.PI) / 3;
+        b.line(cx, cy, Math.round(cx + Math.cos(a) * (r - 1)), Math.round(cy + Math.sin(a) * (r - 1)), PAL.rust1);
+      }
+      b.set(cx, cy, PAL.steel2);
+    };
+    b.line(22, 18, 31, 26, PAL.rust1, 2);
+    b.line(20, 21, 30, 29, PAL.rust0, 2);
+    part(b, WOOD, (l) => l.poly([[2, 10], [24, 14], [22, 24], [3, 21]], '#'), 2);
+    for (const t of [0.33, 0.66]) b.line(Math.round(2 + 22 * t), Math.round(10 + 4 * t), Math.round(3 + 19 * t), Math.round(21 + 3 * t), PAL.rust0);
+    b.line(2, 10, 24, 14, PAL.rust2);
+    wheel(8, 24, 6, false);
+    if (!v) b.ellipse(22, 29, 6, 2, PAL.rust1).line(17, 29, 27, 29, PAL.rust0);
+    else { b.rect(6, 7, 5, 4, PAL.bone0).rect(12, 8, 4, 5, PAL.rust2); }
+    return b.outline(PAL.ink);
+  },
+});
+
 // Sombra tramada al pie de lo que se alza (luz desde arriba a la izquierda).
-const SHADOWED = new Set(['cripta', 'urna', 'sarcofago', 'arbol', 'pino', 'seco', 'sauce', 'hongo', 'estatua', 'columna', 'pena', 'estalagmita', 'espantapajaros', 'cartel', 'farol', 'farol_roto', 'cruz', 'arbol_ancestral', 'coloso', 'pozo']);
+const SHADOWED = new Set(['cripta', 'urna', 'sarcofago', 'arbol', 'pino', 'seco', 'sauce', 'hongo', 'estatua', 'columna', 'pena', 'estalagmita', 'espantapajaros', 'cartel', 'farol', 'farol_roto', 'cruz', 'arbol_ancestral', 'coloso', 'pozo', 'torre', 'molino', 'tienda', 'carreta', 'barril', 'puesto']);
 
 function castShadow(b) {
   const cx = b.w / 2 + 2;
@@ -994,7 +1296,7 @@ function castShadow(b) {
   return b;
 }
 
-export const VARIANTS = { arbol: 3, pino: 3, seco: 3, sauce: 3, hongo: 2, arbusto: 2, roca: 2, lapida: 2, columna: 2, casa: 3 };
+export const VARIANTS = { arbol: 3, pino: 3, seco: 3, sauce: 3, hongo: 2, arbusto: 2, roca: 2, lapida: 2, columna: 2, casa: 3, posada: 2, puesto: 3, torre: 2, tienda: 2, barril: 2, cajas: 2, carreta: 2 };
 
 export function drawProp(kind, B, v = 0) {
   const b = ART[kind](B, v);

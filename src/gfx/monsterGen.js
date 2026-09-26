@@ -22,7 +22,7 @@ const BONE = [PAL.stone1, PAL.bone0, PAL.bone1, PAL.bone2];
 const RUST = [PAL.rust0, PAL.rust1, PAL.rust2, PAL.bone0];
 const PALE = [PAL.stone1, PAL.stone2, PAL.bone0, PAL.bone1];
 const RANK_GLOW = { raro: PAL.steel3, legendario: PAL.ember2, unico: PAL.blood3 };
-const DEFAULT_FORM = { beast: 'bestia', humanoid: 'penitente', wraith: 'espectro', crawler: 'reptante', eldritch: 'engendro', ito: 'cabeza_colgante', undead: 'esqueleto' };
+const DEFAULT_FORM = { cute: 'lumo', beast: 'bestia', humanoid: 'penitente', wraith: 'espectro', crawler: 'reptante', eldritch: 'engendro', ito: 'cabeza_colgante', undead: 'esqueleto' };
 
 // Lápiz en coordenadas de 64x64: el mismo dibujo sirve para el sprite de combate y el del mapa.
 function makePen(size) {
@@ -788,6 +788,136 @@ function hatch(b) {
   }
 }
 
+// ---------------------------------------------------------------- criaturas adorables
+
+const CUTE_RAMPS = {
+  lumo: [PAL.ember0, PAL.ember1, PAL.ember2, PAL.bone2],
+  musgo: [PAL.moss0, PAL.moss1, PAL.moss2, PAL.bone1],
+  chispa: [PAL.blood1, PAL.blood2, PAL.ember1, PAL.ember2],
+  gota: [PAL.steel0, PAL.steel1, PAL.steel2, PAL.steel3],
+  campana: [PAL.stone2, PAL.bone0, PAL.bone1, PAL.bone2],
+  tuerca: [PAL.rust0, PAL.rust1, PAL.rust2, PAL.ember1],
+  hongo: [PAL.blood0, PAL.blood1, PAL.blood2, PAL.blood3],
+};
+const FLUFF = [PAL.bone0, PAL.bone1, PAL.bone2, PAL.bone2];
+
+// Cara adorable: ojos grandes y brillantes, mejillas sonrojadas y boquita.
+function cuteFace(pen, b, x, y, s, big, mouth = 'smile') {
+  for (const dx of [-5 * s, 5 * s]) {
+    pen.ell(b, x + dx, y, 2.8 * s, 3.3 * s, PAL.ink);
+    if (big) {
+      pen.ell(b, x + dx - 0.9 * s, y - 1.2 * s, 1.1 * s, 1.2 * s, PAL.bone2);
+      pen.px(b, x + dx + 1.2 * s, y + 1.4 * s, PAL.bone2);
+    } else pen.px(b, x + dx - 1, y - 1, PAL.bone2);
+    pen.ell(b, x + dx * 1.45, y + 3.4 * s, 1.8 * s, 1.1 * s, PAL.blood3);
+  }
+  if (!big) return;
+  if (mouth === 'smile') pen.curve(b, [[x - 1.6 * s, y + 3 * s], [x, y + 4.6 * s], [x + 1.6 * s, y + 3 * s]], 0.5, 0.5, PAL.ink);
+  else if (mouth === 'w') { pen.curve(b, [[x - 2 * s, y + 3 * s], [x - 1 * s, y + 4.2 * s], [x, y + 3 * s]], 0.5, 0.5, PAL.ink); pen.curve(b, [[x, y + 3 * s], [x + 1 * s, y + 4.2 * s], [x + 2 * s, y + 3 * s]], 0.5, 0.5, PAL.ink); }
+  else pen.ell(b, x, y + 4 * s, 1.4 * s, 1.2 * s, PAL.blood1);
+}
+
+function cute(pen, rng, form) {
+  const { parts, add } = builder(pen);
+  const sp = { lumo: 'lumo', musguito: 'musgo', chispa: 'chispa', gotin: 'gota', campanita: 'campana', tuerquito: 'tuerca', hongolin: 'hongo' }[form] || 'lumo';
+  const R = CUTE_RAMPS[sp];
+  const shape = { parts, hold: { mode: 'impaled', at: [32, 36] }, sparkle: true };
+  if (form === 'lumo') {
+    add([PAL.ember0, PAL.bone0, PAL.bone1, PAL.bone2], (l) => { pen.ell(l, 14, 30, 12, 15); pen.ell(l, 50, 30, 12, 15); pen.ell(l, 16, 48, 8, 8); pen.ell(l, 48, 48, 8, 8); });
+    add(R, (l) => { pen.ell(l, 32, 46, 12, 11); pen.ell(l, 32, 30, 14, 12); pen.poly(l, [[20, 24], [22, 12], [28, 20]]); pen.poly(l, [[44, 24], [42, 12], [36, 20]]); });
+    add(FLUFF, (l) => { for (let a = 0; a < Math.PI; a += 0.35) pen.ell(l, 32 + Math.cos(a) * 11, 40 + Math.sin(a) * 2.5, 3.4, 3); });
+    Object.assign(shape, {
+      head: [32, 30], body: [32, 40, 14, 14],
+      detail(b, big) {
+        cuteFace(pen, b, 32, 31, 1, big, 'w');
+        if (big) {
+          for (const [x0, x1] of [[26, 18], [38, 46]]) { pen.curve(b, [[x0, 19], [x0 + (x1 - x0) * 0.5, 8], [x1, 4]], 0.6, 0.5, PAL.rust1); for (let t = 0; t < 5; t++) pen.px(b, x0 + (x1 - x0) * (0.5 + t * 0.1), 10 - t * 1.2, PAL.ember2); }
+          for (const [x, y] of [[12, 28], [52, 28]]) { pen.ell(b, x, y, 3.2, 3.2, PAL.ember1); pen.ell(b, x, y, 1.5, 1.5, PAL.rust1); }
+        }
+      },
+    });
+  } else if (form === 'musguito') {
+    add(R, (l) => { pen.poly(l, [[24, 26], [16, 2], [22, 4], [30, 24]]); pen.poly(l, [[40, 26], [48, 2], [42, 4], [34, 24]]); });
+    add(R, (l) => { pen.ell(l, 32, 50, 10, 9); pen.ell(l, 24, 58, 5, 3.5); pen.ell(l, 40, 58, 5, 3.5); pen.ell(l, 44, 50, 4, 4); });
+    add(R, (l) => pen.ell(l, 32, 34, 14, 12));
+    Object.assign(shape, {
+      head: [32, 34], body: [32, 46, 12, 12],
+      detail(b, big) {
+        cuteFace(pen, b, 32, 35, 1, big, 'smile');
+        if (big) {
+          pen.line(b, 20, 6, 26, 22, PAL.moss0); pen.line(b, 44, 6, 38, 22, PAL.moss0);
+          for (const [x, y, c] of [[38, 22, PAL.bone2], [39, 21, PAL.ember2], [40, 22, PAL.bone2], [39, 23, PAL.bone2]]) pen.px(b, x, y, c);
+          for (let i = 0; i < 10; i++) { const x = rng.int(22, 42); const y = rng.int(24, 46); if (b.get(Math.round(x * pen.k), Math.round(y * pen.k)) === R[2]) pen.px(b, x, y, R[3]); }
+        }
+      },
+    });
+  } else if (form === 'chispa') {
+    add(R, (l) => { pen.curve(l, [[44, 50], [58, 50], [56, 36]], 4, 1.5); });
+    add([PAL.blood3, PAL.ember1, PAL.ember2, PAL.bone2], (l) => pen.ell(l, 56, 32, 3.5, 5));
+    add(R, (l) => { pen.ell(l, 38, 48, 12, 8); for (const x of [30, 44]) pen.ell(l, x, 56, 3, 3); });
+    add(R, (l) => pen.ell(l, 26, 36, 13, 12));
+    Object.assign(shape, {
+      head: [26, 36], body: [36, 44, 14, 10],
+      detail(b, big) {
+        cuteFace(pen, b, 26, 36, 1, big, 'smile');
+        if (big) for (const [x, y] of [[38, 43], [44, 46], [34, 48]]) pen.ell(b, x, y, 1.6, 1.2, PAL.ember2);
+        pen.px(b, 56, 27, PAL.bone2);
+      },
+    });
+  } else if (form === 'gotin') {
+    add(R, (l) => { pen.poly(l, [[32, 8], [46, 30], [48, 44], [40, 56], [24, 56], [16, 44], [18, 30]]); pen.ell(l, 32, 44, 16, 13); });
+    add(R, (l) => { pen.ell(l, 24, 58, 4, 2.5); pen.ell(l, 40, 58, 4, 2.5); });
+    Object.assign(shape, {
+      head: [32, 40], body: [32, 42, 15, 14],
+      detail(b, big) {
+        cuteFace(pen, b, 32, 40, 1, big, 'o');
+        if (big) { pen.curve(b, [[22, 34], [24, 24], [30, 16]], 1.4, 0.6, PAL.bone2); pen.px(b, 40, 48, PAL.steel3); }
+      },
+    });
+  } else if (form === 'campanita') {
+    add(R, (l) => { pen.ell(l, 32, 30, 16, 16); pen.poly(l, [[16, 30], [48, 30], [50, 52], [44, 48], [38, 54], [32, 48], [26, 54], [20, 48], [14, 52]]); });
+    add(R, (l) => pen.ell(l, 14, 40, 4, 3), 'edge');
+    add([PAL.ember0, PAL.ember1, PAL.ember2, PAL.bone2], (l) => { pen.poly(l, [[6, 44], [9, 36], [13, 36], [16, 44]]); pen.ell(l, 11, 35, 2, 1.5); });
+    Object.assign(shape, {
+      head: [32, 30], body: [32, 38, 16, 16], fade: false,
+      detail(b, big) {
+        cuteFace(pen, b, 33, 30, 1, big, 'smile');
+        pen.px(b, 11, 45, PAL.ink);
+        if (big) pen.curve(b, [[24, 16], [32, 12], [40, 16]], 0.6, 0.6, PAL.bone2);
+      },
+    });
+  } else if (form === 'tuerquito') {
+    add(R, (l) => { pen.ell(l, 32, 40, 15, 16); pen.poly(l, [[20, 26], [22, 16], [28, 24]]); pen.poly(l, [[44, 26], [42, 16], [36, 24]]); });
+    add(R, (l) => { pen.ell(l, 16, 42, 4, 8); pen.ell(l, 48, 42, 4, 8); }, 'edge');
+    add([PAL.steel0, PAL.steel1, PAL.steel2, PAL.steel3], (l) => { pen.limb(l, 50, 30, 58, 24, 1.2, 1.2); pen.ell(l, 59, 22, 3, 2); });
+    Object.assign(shape, {
+      head: [32, 36], body: [32, 42, 14, 14],
+      detail(b, big) {
+        for (const dx of [-6, 6]) { pen.ell(b, 32 + dx, 34, 5, 5, PAL.steel2); pen.ell(b, 32 + dx, 34, 3.6, 3.6, PAL.ink); if (big) { pen.px(b, 31 + dx, 33, PAL.bone2); pen.px(b, 33 + dx, 35, PAL.bone2); } }
+        pen.poly(b, [[30, 38], [34, 38], [32, 41]], PAL.ember1);
+        if (big) {
+          pen.ell(b, 32, 48, 5, 5, PAL.rust0); pen.ell(b, 32, 48, 3, 3, PAL.rust2);
+          for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) pen.px(b, 32 + Math.cos(a) * 6, 48 + Math.sin(a) * 6, PAL.rust1);
+          pen.ell(b, 22, 40, 1.8, 1.1, PAL.blood3); pen.ell(b, 42, 40, 1.8, 1.1, PAL.blood3);
+        }
+      },
+    });
+  } else {
+    // Hongolín: sombrero de hongo con motas y una carita en el tallo.
+    add(FLUFF, (l) => { pen.poly(l, [[22, 30], [42, 30], [44, 54], [20, 54]]); pen.ell(l, 24, 57, 4, 3); pen.ell(l, 40, 57, 4, 3); });
+    add(R, (l) => { pen.ell(l, 32, 24, 22, 14); });
+    Object.assign(shape, {
+      head: [32, 40], body: [32, 40, 12, 14],
+      detail(b, big) {
+        for (let x = 10; x < 55; x++) pen.px(b, x, 31, R[0]);
+        for (const [x, y, r] of [[22, 18, 3], [34, 14, 3.5], [46, 20, 2.6], [28, 26, 2], [40, 26, 2]]) pen.ell(b, x, y, r, r * 0.8, PAL.bone2);
+        cuteFace(pen, b, 32, 41, 0.8, big, 'smile');
+      },
+    });
+  }
+  return shape;
+}
+
 // ---------------------------------------------------------------- rareza
 
 function rankDecor(pen, b, rng, rank, shape, pal, big) {
@@ -900,14 +1030,15 @@ export function generateMonster({ seed, size = 64, archetype, ramp, rank = 'comu
   const rng = createRng(seed);
   const arch = archetype || rng.pick(ARCHETYPES);
   const rampKey = ramp || rng.pick(Object.keys(RAMPS));
-  const main = RAMPS[rampKey];
+  // Las criaturas adorables usan sus propias rampas (CUTE_RAMPS) además de las comunes.
+  const main = RAMPS[rampKey] || CUTE_RAMPS[rampKey] || RAMPS.flesh;
   const big = size >= 40;
   const eye = rng.pick([PAL.ember2, PAL.blood3, PAL.bone2, PAL.steel3]);
   const pal = { main, far: farRamp(main), acc: rampKey === 'bone' ? RUST : BONE, eye };
   const pen = makePen(size);
   const shapeRng = rng.fork('shape');
   const f = form || DEFAULT_FORM[arch];
-  const BUILD = { beast, humanoid, wraith, crawler, eldritch, ito, undead };
+  const BUILD = { beast, humanoid, wraith, crawler, eldritch, ito, undead, cute };
   const shape = (BUILD[arch] || beast)(pen, shapeRng, f, pal);
   const weapon = loot?.slot === 'arma' && loot.look ? loot : null;
   if (weapon && big && shape.hold.mode === 'impaled') shape.parts.unshift({ raw: lootWeaponBig(shape, weapon, size) });
@@ -930,6 +1061,18 @@ export function generateMonster({ seed, size = 64, archetype, ramp, rank = 'comu
   b.outline(PAL.ink);
   // Contorno doble para la tinta de pesadilla.
   if (shape.hatch && big) b.outline(PAL.ink);
+  // Las criaturas adorables brillan: destellos a su alrededor (también en el mapa).
+  if (shape.sparkle) {
+    if (big) for (const [x, y] of [[6, 10], [58, 14], [4, 44], [60, 50]]) { pen.px(b, x, y, PAL.bone2); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) pen.px(b, x + dx * 1.5, y + dy * 1.5, PAL.ember2); }
+    else {
+      // En el mapa: tres destellos en cruz en los huecos libres alrededor del cuerpo.
+      for (const [x, y] of [[2, 3], [21, 5], [2, 15]]) {
+        const cells = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
+        if (cells.some(([dx, dy]) => b.get(x + dx, y + dy))) continue;
+        for (const [dx, dy] of cells) b.set(x + dx, y + dy, dx || dy ? PAL.ember2 : PAL.bone2);
+      }
+    }
+  }
   if (RANK_GLOW[rank] && rank !== 'raro') aura(b, RANK_GLOW[rank]);
   else if (rank === 'raro' && !big) aura(b, RANK_GLOW.raro);
   return { buffer: b, archetype: arch, eyeColor: eye };

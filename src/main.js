@@ -8,6 +8,7 @@ import { Battle } from './scenes/Battle.js';
 import { Bag } from './scenes/Bag.js';
 import { Status } from './scenes/Status.js';
 import { MapView } from './scenes/MapView.js';
+import { Party } from './scenes/Party.js';
 
 // Escalado entero únicamente: el pixel art nunca se deforma ni se difumina.
 function integerZoom() {
@@ -21,7 +22,7 @@ const game = new Phaser.Game({
   pixelArt: true,
   roundPixels: true,
   scale: { mode: Phaser.Scale.NONE, width: GAME_W, height: GAME_H, zoom: integerZoom(), autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [Boot, Title, Overworld, Battle, Bag, Status, MapView],
+  scene: [Boot, Title, Overworld, Battle, Bag, Status, MapView, Party],
 });
 
 window.addEventListener('resize', () => game.scale.setZoom(integerZoom()));

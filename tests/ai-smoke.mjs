@@ -59,7 +59,8 @@ try {
   const greeting = await page.evaluate(() => window.__game.scene.getScene('Overworld').npcs[0].data.history.at(-1)?.text || '');
   if (!greeting.includes('voz del pozo')) throw new Error(`Saludo no vino de Claude: ${greeting}`);
   const textActive = () => page.evaluate(() => window.__game.scene.getScene('Overworld').textInput.active);
-  for (let i = 0; i < 6 && !(await textActive()); i++) await press('z', 1, 600);
+  // Si el NPC ofrece una misión, se acepta (Z) antes de poder escribirle.
+  for (let i = 0; i < 14 && !(await textActive()); i++) await press('z', 1, 600);
   await page.keyboard.type('¿Dónde está la escalera, señora?');
   await wait(300);
   await shot('02-escribiendo');
